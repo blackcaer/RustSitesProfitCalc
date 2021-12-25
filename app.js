@@ -100,6 +100,7 @@ const isNotRedundant = function(item,arr){
 // https://rustbet.com/api/steamInventory   jesli zalogowany
 // https://rustbet.com/api/upgrader/stock?order=1&max=20
 // https://rustbet.com/api/upgrader/stock?order=-1&max=9999&count=28000
+// https://steamcommunity.com/market/search/render/?query=&start=0&norender=1&count=100&search_descriptions=0&sort_column=popular&sort_dir=desc&appid=252490
 
 
 
