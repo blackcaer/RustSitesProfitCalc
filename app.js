@@ -52,7 +52,7 @@ const isNotRedundant = function(item,arr){
             if(1)   // TODO
                 break
         }*/
-
+        
         let tmp = JSON.parse(fs.readFileSync(PATH_RB_ITEMS,{encoding:'utf8', flag:'r'}))
 
         for (const item of tmp)
@@ -73,9 +73,21 @@ const isNotRedundant = function(item,arr){
     }//end preparing rb_iems
 
     var sm_itemsdb = JSON.parse(fs.readFileSync(PATH_SM_ITEMDB,{encoding:'utf8', flag:'r'}))
+    
+    //for (const i in rb_items)
+    //{
+    //    console.log(rb_items[i].name)
+    //}
 
-    //for ()
+    for (let i=0; i<rb_items.length; i++)
+    {
+        sm_itemsdb.find(el=>el.name===rb_items[i].name)
 
+        //znajdz w sm
+        //dopsiz do niego obiekt sm
+        //wyszukaj jego cene
+        //analiza
+    }
 
     // pobierz dane ze strony bez kopii 
     // pobranie danych ze steama 
