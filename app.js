@@ -37,22 +37,6 @@ const isNotRedundant = function(item,arr){
     {//preparing rb_iems
     if(!fs.existsSync(PATH_RB_ITEMSSHORT))
     {    
-        /*while(1)    // fetch rb items
-        {
-            let chunk = []
-            chunk = await rb.getItemsChunk()
-            console.log(chunk)
-
-            chunk.forEach(element => {
-                if(!(element in rb_items))
-                    rb_items.push(element)
-            })
-
-            console.log("XXX: "+rb_items)
-            if(1)   // TODO
-                break
-        }*/
-        
         let tmp = JSON.parse(fs.readFileSync(PATH_RB_ITEMS,{encoding:'utf8', flag:'r'}))
 
         for (const item of tmp)

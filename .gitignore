@@ -1,3 +1,4 @@
 node_modules/
 lib/getnameid_dbs/
 npm-debug.log
+src/cookies/
