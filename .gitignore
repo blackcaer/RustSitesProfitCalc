@@ -1,4 +1,7 @@
 node_modules/
-lib/getnameid_dbs/
 npm-debug.log
+"src/old item db"
+lib/getnameid_dbs/
 src/cookies/
+TODO.txt
+test.js

@@ -1,3 +1,4 @@
+const { Console } = require('console')
 const fs=require('fs')    //file stream
 //const prompt = require('prompt')
 const rb = require('./lib/sitereq_rb.js')
@@ -28,56 +29,77 @@ const isNotRedundant = function(item,arr){
     return true
 }
 
-;// Main:
-(async()=>{
-
-    var data=[]
-    var rb_items=[]
-
-    {//preparing rb_iems
-    if(!fs.existsSync(PATH_RB_ITEMSSHORT))
+const prepareRbItems = async function(path){
+    
+    if(!fs.existsSync(path))
     {    
-        let tmp = JSON.parse(fs.readFileSync(PATH_RB_ITEMS,{encoding:'utf8', flag:'r'}))
+        let tmp = JSON.parse(fs.readFileSync(path,{encoding:'utf8', flag:'r'}))
 
         for (const item of tmp)
         {
             if(isNotRedundant(item,rb_items))
                     rb_items.push(item)
         }
-        storeData(rb_items,PATH_RB_ITEMSSHORT)
+        storeData(rb_items,path)
     }
     else
     {
-        rb_items=JSON.parse(fs.readFileSync(PATH_RB_ITEMSSHORT,{encoding:'utf8',flad:'r'}))
+        rb_items=JSON.parse(fs.readFileSync(path,{encoding:'utf8',flad:'r'}))
         console.log("Rb items short loaded")
     }
 
     console.log("rb_items.length: ")
     console.log(rb_items.length)
-    }//end preparing rb_iems
+}
 
-    var sm_itemsdb = JSON.parse(fs.readFileSync(PATH_SM_ITEMDB,{encoding:'utf8', flag:'r'}))
-    
-    //for (const i in rb_items)
-    //{
-    //    console.log(rb_items[i].name)
-    //}
+// glowny plik do zbierania danych z wielu stron, wszak analiza wszędzie jest taka sama, od razu dane wszystkich stron mialbym posegregowane w jednym miejscu
 
-    for (let i=0; i<rb_items.length; i++)
-    {
-        sm_itemsdb.find(el=>el.name===rb_items[i].name)
+;// Main:
+(async()=>{
+    var data=[]
+    var rb_items=[]
 
-        //znajdz w sm
-        //dopsiz do niego obiekt sm
-        //wyszukaj jego cene
-        //analiza
+    { //Preparing all items:
+        //preparing rb_iems
+        rb_items = await prepareRbItems(PATH_RB_ITEMSSHORT)
+        var sm_itemsdb = JSON.parse(fs.readFileSync(PATH_SM_ITEMDB,{encoding:'utf8', flag:'r'}))
     }
 
-    // pobierz dane ze strony bez kopii 
-    // pobranie danych ze steama 
-    //do rbitems dodac kolejną property sm_data : {price: , realprice: , } etc.
-    //analiza
+    { // Analyzing
 
+        //for (const i in rb_items)
+        //{
+        //    console.log(rb_items[i].name)
+        //}
+
+        //console.log(rb_items)
+        let foundcount=0
+        for (let i=0; i<rb_items.length; i++)
+        {
+            let currname = rb_items[i].name
+            let found = sm_itemsdb.find(el=>el.name===currname)
+            if(found===undefined)
+                {
+                    console.log(`Not found: ${currname}`);
+                    continue
+                }
+            foundcount++
+            console.log(`Item found: ${found.name}`)
+            
+
+            //X znajdz w sm
+            // dopsiz do niego obiekt sm (nie lepiej dolaczyc samo nameid? bo chyba starczy tyle)
+            // wyszukaj jego cene
+            // analiza
+        }
+        console.log(`found: ${foundcount}/${rb_items.length}`);
+        // pobierz dane ze strony bez kopii 
+        // pobranie danych ze steama 
+        //do rbitems dodac kolejną property sm_data : {price: , realprice: , } etc.
+        //analiza
+    } 
+
+    
 })();//end main IFEE func
 
 
@@ -86,5 +108,16 @@ const isNotRedundant = function(item,arr){
 // https://rustbet.com/api/upgrader/stock?order=-1&max=9999&count=28000
 // https://steamcommunity.com/market/search/render/?query=&start=0&norender=1&count=100&search_descriptions=0&sort_column=popular&sort_dir=desc&appid=252490
 
+/* rbitem:
+ {
+    _id: '61c34cfffe30de4d5795e396',
+    name: 'Blackout Gloves',
+    image: '6TMcQ7eX6E0EZl2byXi7vaVKyDk_zQLX05x6eLCFM9neAckxGDf7qU2e2gu64OnAeQ7835BZ4mLEfCk4nReh8DEiv5dYPaA9q7U0R_G_MCMIAFY',
+    origin: 'steam',
+    color: 'a7ec2e',
+    locked: false,
+    price: 7.2
+  }
+   */
 
 
