@@ -21,21 +21,13 @@ const storeData = (data, path) => {
     }
 }
 
-const isNotRedundant = function (item, arr) {
-    for (const arr_item of arr) {
-        if (item.name === arr_item.name)
-            return false
-    }
-    return true
-}
-
 const prepareRbItems = async function (pathRbDb) {
     var items = []
     if (fs.existsSync(pathRbDb)) {
         let tmp = JSON.parse(fs.readFileSync(pathRbDb, { encoding: 'utf8', flag: 'r' }))
 
         for (const item of tmp) {
-            let pos = items.findIndex((el) => { el.name === item.name })
+            let pos = items.findIndex((el) => { return el.name === item.name })
             if (pos === -1) {
                 items.push(item)
                 items[items.length-1].quantity = 1
@@ -118,15 +110,13 @@ const prepareRbItems = async function (pathRbDb) {
         }
     }
     
-    { // Filtering
+    { // Filtering 1
 
     }
     var itemcount = data.rb_items.length
 
-    { // Fetching sm data for each item
-        
+    { // Fetching sm data for each item      
         let time_start,time_end // measuring time
-
         // Rustbet: 
         
         time_start = Date.now()
@@ -180,6 +170,17 @@ const prepareRbItems = async function (pathRbDb) {
             items_sum+=sites[i].length
 
         console.log(`Fetching all ${data.rb_items.length} items took ${(time_end-time_start)/1000} seconds`);
+    }
+
+    { // Filtering 2 (when we know real price of those items)
+        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
+        {
+            for (let itemnr = 0; itemnr < itemcount; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
+            {
+
+
+            }
+        }
     }
 
     var result = []
