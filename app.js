@@ -4,10 +4,10 @@ const fs = require('fs')    //file stream
 const rb = require('./lib/sitereq_rb.js')   // Needs bypass of cloudflare 
 const sm = require('./lib/sitereq_sm')
 
-const NAME_RB_ITEMS = "testsrc.txt"
+const NAME_RB_ITEMS = "rb_itembd.txt"
 //const NAME_RB_ITEMSSHORT="testsrc_short.txt"
 
-const PATH_RB_ITEMS = "./src/" + NAME_RB_ITEMS//testsrc.txt"
+const PATH_RB_ITEMS = "./src/" + NAME_RB_ITEMS //rb_itembd.txt
 const PATH_SM_ITEMDB = "./src/itemdb.js"
 
 const PATH_COOKIES="./src/cookies/steam_cookies_priceov.txt"
@@ -34,10 +34,14 @@ const prepareRbItems = async function (pathRbDb) {
     if (fs.existsSync(pathRbDb)) {
         let tmp = JSON.parse(fs.readFileSync(pathRbDb, { encoding: 'utf8', flag: 'r' }))
 
-
         for (const item of tmp) {
-            if (isNotRedundant(item, items))
+            let pos = items.findIndex((el) => { el.name === item.name })
+            if (pos === -1) {
                 items.push(item)
+                items[items.length-1].quantity = 1
+                continue
+            }
+            items[pos].quantity++
         }
         //storeData(items,pathRbDb)
     }
@@ -57,6 +61,7 @@ const prepareRbItems = async function (pathRbDb) {
     var data = {}
     data.rb_items = []
     data.sm_items = []
+    var sites = [data.rb_items]
 
     { // Preparing all items:
 
@@ -69,16 +74,16 @@ const prepareRbItems = async function (pathRbDb) {
                 return false
             }
             else    // if good
-                data.rb_items = rb_fetch_result.items
+                data.rb_items.push(...rb_fetch_result.items)
         }
 
         // Preparing sm_market database:
         {
-            data.sm_items = JSON.parse(fs.readFileSync(PATH_SM_ITEMDB, { encoding: 'utf8', flag: 'r' }))
+            data.sm_items.push(...JSON.parse(fs.readFileSync(PATH_SM_ITEMDB, { encoding: 'utf8', flag: 'r' })))
         }
 
     }
-
+    
     { // Adding nameid to items
         let stats = {}
 
@@ -90,7 +95,8 @@ const prepareRbItems = async function (pathRbDb) {
             for (let i = 0; i < data.rb_items.length; i++) {
                 let currname = data.rb_items[i].name
                 let found = data.sm_items.find(el => el.name === currname)
-                if (found == false) {
+                if (found === undefined) 
+                {
                     //console.log(`Not found: ${currname}`);
                     stats.rb.notfound.push(currname)
                     continue
@@ -111,9 +117,14 @@ const prepareRbItems = async function (pathRbDb) {
                 console.log(SPACE + `Not found: \n ${stats.rb.notfound}\n`)
         }
     }
+    
+    { // Filtering
+
+    }
+    var itemcount = data.rb_items.length
 
     { // Fetching sm data for each item
-        const sites = [data.rb_items,]
+        
         let time_start,time_end // measuring time
 
         // Rustbet: 
@@ -128,26 +139,38 @@ const prepareRbItems = async function (pathRbDb) {
 
         //{headers:{Cookie:fs.readFileSync(PATH_COOKIES,"utf8")}} 
         //console.log(smheaders)
-        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
+        for (let sitenr = 0; sitenr < 1; sitenr++) //sites.length; sitenr++) 
         {
-            for (let itemnr = 0; itemnr < 40; itemnr++) //data.rb_items.length; itemnr++) 
+            for (let itemnr = 0; itemnr < itemcount ; itemnr++) //itemnr < TMP_ITEM_LIMIT; itemnr++)
             {
-                let item = sites[sitenr][itemnr]     //shortcut
-                //let options = {cd_tooManyRequest_error:31000,maxTMRerrInRow:6,appid:252490, nameid:item.nameid, hash_name:item.name,req_data:{headers:{Cookie:fs.readFileSync(PATH_COOKIES,"utf8")}}, logErr:true, logInfo:true}
-                let options = {cd_tooManyRequest_error:5000,maxTMRerrInRow:6,appid:252490, nameid:item.nameid, hash_name:item.name,req_data:smheaders, logErr:true, logInfo:true}
-                // bad request
-                item.sm_data = {}
-                
-                options.type = "histogram"
-                item.sm_data.histogram = await sm.getData(options)
-                // reszta wsm useless
-                //options.type = "pricehistory"
-                //item.sm_data.pricehistory = await sm.getData(options)
-                //options.type = "priceoverview"
-                //item.sm_data.priceoverview = await sm.getData(options)
-                
                 console.log(`Item nr ${itemnr}`);
 
+                let item = sites[sitenr][itemnr]     //shortcut
+                //let options = {cd_tooManyRequest_error:31000,maxTMRerrInRow:6,appid:252490, nameid:item.nameid, hash_name:item.name,req_data:{headers:{Cookie:fs.readFileSync(PATH_COOKIES,"utf8")}}, logErr:true, logInfo:true}
+                let options = {cd_tooManyRequest_error:5000,maxTMRerrInRow:1,appid:252490, nameid : item.nameid, hash_name:item.name,req_data:smheaders, logErr:true, logInfo:true}
+                let tmp     // Variable holding actual response from getData (with histogram/priceoverview etc./)
+                item.sm_data = {"status":{"all":true,"histogram":true}}     // if error, overwrite bad one to false and .all to false
+                
+                options.type = "histogram"
+                tmp = await sm.getData(options)
+                if(tmp.success == true && tmp.response.success === 1)
+                    item.sm_data.histogram = tmp.response   
+                else
+                {
+                    console.log(`Error while getting histogram: "${tmp.error}", \n
+                    success: ${tmp.success}\n
+                    histogram.success: ${tmp.histogram.success}\n`)
+                    item.sm_data.status.all = false
+                    item.sm_data.status.histogram = false
+                }
+
+                // reszta wsm useless poki co a problemy robi, priceoverview jest zawarte w histogramie
+                /*
+                options.type = "pricehistory"
+                item.sm_data.pricehistory = await sm.getData(options)
+                options.type = "priceoverview"
+                item.sm_data.priceoverview = await sm.getData(options)
+                */
             }
         }
         // Stats:
@@ -158,10 +181,41 @@ const prepareRbItems = async function (pathRbDb) {
 
         console.log(`Fetching all ${data.rb_items.length} items took ${(time_end-time_start)/1000} seconds`);
     }
-    //for(let i=0;i<3;i++)   // TODO delete test
+
+    var result = []
+
+    { // Analyzing
+        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
+        {
+            for (let itemnr = 0; itemnr < itemcount; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
+            {
+                let item = sites[sitenr][itemnr]
+                { // Rustbet
+                    item.roe = (item.sm_data.histogram.lowest_sell_order/100) / item.price // steam price / site price
+                    //console.log(item.roe)
+                    if(item.roe>4.5)        // TODO temporary
+                        result.push(item)
+                }
+
+            }
+        }
+    }
+
+    console.log("XXXXXXXXXXXXXXXXXX")
+    result.sort((a,b)=>{return b.roe-a.roe})  // zle dziala
+
+    for (item of result)
+    {
+        console.log(`${item.name} :  ${item.roe} \n`);
+    }
+
+    //  (kurs nagrody * 0,85)/kurs beta -1 = game sum (??razcej ta)
+
+    //for(let i=0;i<data.rb_items.length;i++)   // TODO delete test
     //{ 
-        console.log(data.rb_items[30]);
-        console.log(data.rb_items[30].sm_data);
+        //console.log(data.rb_items[0]);
+    //    console.log(`${data.rb_items[i].name} :  ${data.rb_items[i].roe}`);
+        //console.log(data.rb_items[i].roe);
     //}
     
     //console.log(data)
@@ -176,6 +230,10 @@ const prepareRbItems = async function (pathRbDb) {
     //analiza steam
     //analiza stron
 
+    //optymalizacja:
+    //fetchowanie sm tylko w danym zakresie cenowym (dział 'filtering' tuz po preparing)
+
+    //obsluga bledow przy kazdym json parse
 })();//end main IFEE func
 
 
@@ -183,7 +241,7 @@ const prepareRbItems = async function (pathRbDb) {
 // https://rustbet.com/api/upgrader/stock?order=1&max=20
 // https://rustbet.com/api/upgrader/stock?order=-1&max=9999&count=28000
 // https://steamcommunity.com/market/search/render/?query=&start=0&norender=1&count=100&search_descriptions=0&sort_column=popular&sort_dir=desc&appid=252490
-
+// 
 /* rbitem:
  {
     _id: '61c34cfffe30de4d5795e396',
