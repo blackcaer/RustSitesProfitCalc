@@ -4,7 +4,7 @@ const fs = require('fs')    //file stream
 const rb = require('./lib/sitereq_rb.js')   // Needs bypass of cloudflare 
 const sm = require('./lib/sitereq_sm')
 
-const NAME_RB_ITEMS = "rb_itembd.txt"
+const NAME_RB_ITEMS = "rb_itemdb.txt"
 //const NAME_RB_ITEMSSHORT="testsrc_short.txt"
 
 const PATH_RB_ITEMS = "./src/" + NAME_RB_ITEMS //rb_itembd.txt
@@ -54,6 +54,15 @@ const prepareRbItems = async function (pathRbDb) {
     data.rb_items = []
     data.sm_items = []
     var sites = [data.rb_items]
+
+    var smreqdata
+    try{
+    smreqdata = JSON.parse('{'+fs.readFileSync(PATH_HEADER,"utf8")+'}')
+    }catch(err){
+        console.log('Headers file error:')
+        console.log(err);
+        return false
+    }
 
     { // Preparing all items:
 
@@ -110,8 +119,94 @@ const prepareRbItems = async function (pathRbDb) {
         }
     }
     
-    { // Filtering 1
+    var whitelist = []
+    var blacklist = []
 
+   { // Filtering 1
+        
+        let popularx100 = 3
+        let unpopularx100 = 6
+        let totalitems
+        
+        let precursor = await sm.getChunkOfSteamMarket({start:0,count:1,smreqdata})
+        if(precursor.success==false)
+        {
+            console.log("Failed to run precursor in filter 1: ")
+            console.log(precursor.error)
+            return false
+        }
+        totalitems = precursor.info.total_count
+
+        let promisetab=[]
+        // Whitelist: sm popular
+        let options = {search_descriptions: false, sort_column: 'popular', sort_dir: 'desc', appid: 252490}
+        for (let i = 0; i < popularx100; i++) {
+            let start = i * 100
+            promisetab.push(sm.getChunkOfSteamMarket({ count: 100, start: start, ...options, req_data: smreqdata }).then((resp, err) => {
+                console.log(`Promise tab 1 nr: ${i}`);
+                if (err) {
+                    console.log(`(getMarketSearch start: ${start})`);
+                    console.log(`Error while getting data to filter1: ${err}`)
+                    
+                }
+                else if (resp.success != true) {
+                    console.log(`(getMarketSearch start: ${start})`);
+                    console.log(`Error while getting data to filter1: data success isn't true`)
+                    
+                }
+                else
+                {
+                    
+                for (let j = 0; j < resp.data.length; j++) {
+                    whitelist.push(resp.data[j].hash_name)
+                }}
+            }))
+        }
+
+        // Blacklist: sm unpopular
+        for (let i = 0; i < unpopularx100; i++) {
+            let start = totalitems-100*(unpopularx100-i)
+            promisetab.push(sm.getChunkOfSteamMarket({ count: 100, start: start, search_descriptions: false, sort_column: 'popular', sort_dir: 'desc', appid: 252490, req_data: smreqdata }).then((resp, err) => {
+                console.log(`Promise tab 2 nr: ${i}`);
+                if (err) {
+                    console.log(`(getMarketSearch start: ${start})`);
+                    console.log(`Error while getting data to filter1: ${err}`)
+                    
+                }
+                else if (resp.success != true) {
+                    console.log(`(getMarketSearch start: ${start})`);
+                    console.log(`Error while getting data to filter1: data success isn't true`)
+                    
+                }
+                else{
+                for (let j = 0; j < resp.data.length; j++) {
+                    blacklist.push(resp.data[j].hash_name)
+                }}
+            }))
+        }
+
+        console.log("Wait...");
+        let time_start=Date.now()
+        await Promise.all(promisetab)
+        let time_end=Date.now()
+
+        console.log(`Market search data fetched in ${(time_end-time_start)/1000} s`)
+        
+        /*console.log('\nWHITELIST: ');
+        console.log(whitelist)
+        console.log('BLACKLIST: ');
+        console.log(blacklist)*/
+        /*
+        bezwzgledna whitelista i blacklista
+        whitelist>blacklist
+        kontrola powtorzen ?
+
+        kryteria:
+        -popularnosc (np 300 pierwszych W, 600 last B)
+        -cena na rb (np (>30$) W, <0.5$ B)
+        -
+
+        */
     }
     var itemcount = data.rb_items.length
 
@@ -120,12 +215,6 @@ const prepareRbItems = async function (pathRbDb) {
         // Rustbet: 
         
         time_start = Date.now()
-        let smheaders
-        try{
-        smheaders = JSON.parse(fs.readFileSync(PATH_HEADER,"utf8"))
-        }catch(err){
-
-        }
 
         //{headers:{Cookie:fs.readFileSync(PATH_COOKIES,"utf8")}} 
         //console.log(smheaders)
@@ -133,13 +222,13 @@ const prepareRbItems = async function (pathRbDb) {
         {
             for (let itemnr = 0; itemnr < itemcount ; itemnr++) //itemnr < TMP_ITEM_LIMIT; itemnr++)
             {
-                console.log(`Item nr ${itemnr}`);
-
                 let item = sites[sitenr][itemnr]     //shortcut
-                //let options = {cd_tooManyRequest_error:31000,maxTMRerrInRow:6,appid:252490, nameid:item.nameid, hash_name:item.name,req_data:{headers:{Cookie:fs.readFileSync(PATH_COOKIES,"utf8")}}, logErr:true, logInfo:true}
-                let options = {cd_tooManyRequest_error:5000,maxTMRerrInRow:1,appid:252490, nameid : item.nameid, hash_name:item.name,req_data:smheaders, logErr:true, logInfo:true}
+
+                console.log(`Item nr ${itemnr} : ${item.name}`);    // status
+
+                let options = {cd_tooManyRequest_error:5000,maxTMRerrInRow:1,appid:252490, nameid : item.nameid, hash_name:item.name,req_data:smreqdata, logErr:true, logInfo:true}
                 let tmp     // Variable holding actual response from getData (with histogram/priceoverview etc./)
-                item.sm_data = {"status":{"all":true,"histogram":true}}     // if error, overwrite bad one to false and .all to false
+                item.sm_data = {"status":{"allgood":true,"histogram":true}}     // if error, overwrite bad one to false and .allgood to false
                 
                 options.type = "histogram"
                 tmp = await sm.getData(options)
@@ -147,10 +236,10 @@ const prepareRbItems = async function (pathRbDb) {
                     item.sm_data.histogram = tmp.response   
                 else
                 {
-                    console.log(`Error while getting histogram: "${tmp.error}", \n
-                    success: ${tmp.success}\n
-                    histogram.success: ${tmp.histogram.success}\n`)
-                    item.sm_data.status.all = false
+                    console.log(`Error while getting histogram: "${tmp.error}"`)
+                    console.log(`GetData success: ${tmp.success}`)
+                    console.log(`Histogram success: ${tmp.response.success}`)
+                    item.sm_data.status.allgood = false
                     item.sm_data.status.histogram = false
                 }
 
@@ -172,17 +261,6 @@ const prepareRbItems = async function (pathRbDb) {
         console.log(`Fetching all ${data.rb_items.length} items took ${(time_end-time_start)/1000} seconds`);
     }
 
-    { // Filtering 2 (when we know real price of those items)
-        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
-        {
-            for (let itemnr = 0; itemnr < itemcount; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
-            {
-
-
-            }
-        }
-    }
-
     var result = []
 
     { // Analyzing
@@ -194,7 +272,7 @@ const prepareRbItems = async function (pathRbDb) {
                 { // Rustbet
                     item.roe = (item.sm_data.histogram.lowest_sell_order/100) / item.price // steam price / site price
                     //console.log(item.roe)
-                    if(item.roe>4.5)        // TODO temporary
+                    if(item.roe>4.4)        // TODO temporary
                         result.push(item)
                 }
 
@@ -205,31 +283,36 @@ const prepareRbItems = async function (pathRbDb) {
     console.log("XXXXXXXXXXXXXXXXXX")
     result.sort((a,b)=>{return b.roe-a.roe})  // zle dziala
 
-    for (item of result)
-    {
-        console.log(`${item.name} :  ${item.roe} \n`);
+
+
+    { // Filtering 2 (when we know real price of those items and roe)
+        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
+        {
+            for (let itemnr = 0; itemnr < itemcount; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
+            {
+
+
+            }
+        }
+    }
+
+    { // Getting volume from priceoverview
+
+    }
+
+    { // Filtering 3 
+
+    }
+
+    { // Display
+        for (item of result)
+        {
+            console.log(`${item.name} :  ${item.roe} \n`);
+        }
+
     }
 
     //  (kurs nagrody * 0,85)/kurs beta -1 = game sum (??razcej ta)
-
-    //for(let i=0;i<data.rb_items.length;i++)   // TODO delete test
-    //{ 
-        //console.log(data.rb_items[0]);
-    //    console.log(`${data.rb_items[i].name} :  ${data.rb_items[i].roe}`);
-        //console.log(data.rb_items[i].roe);
-    //}
-    
-    //console.log(data)
-    //X znajdz w sm
-    //X dopsiz do niego obiekt sm (nie lepiej dolaczyc samo nameid? bo chyba starczy tyle)
-    // wyszukaj jego cene do atrybutu-obiektu sm_data
-    // analiza
-
-    // pobierz dane ze stron bez kopii 
-    // pobranie danych ze steama 
-    //do rbitems dodac kolejną property sm_data : {price: , realprice: , } etc.
-    //analiza steam
-    //analiza stron
 
     //optymalizacja:
     //fetchowanie sm tylko w danym zakresie cenowym (dział 'filtering' tuz po preparing)
