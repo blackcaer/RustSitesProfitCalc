@@ -40,23 +40,36 @@ const prepareRbItems = async function (pathRbDb) {
     else {
         return { "success": false, "error": [`Error: ${pathRbDb} not found`] }
     }
-
-    console.log(`items.length: ${items.length}`)
-
     return { "success": true, "items": items }
 }
 
+/**
+ * Function is checking whether name is on the white or black list. If on none of them, returns 0.
+ * @param {string} name - name to check
+ * @param {string[]} whitelist - if name in whitelist, returns 2
+ * @param {string[]} blacklist - if name in blacklist, returns 1
+ * 
+ */
+const itemStatus = function(name="",whitelist=[],blacklist=[]){
+    if(whitelist.includes(name))
+        return 2
+    else if(blacklist.includes(name))
+        return 1
+    else
+        return 0
+    
+}
 // glowny plik do zbierania danych z wielu stron, wszak analiza wszędzie jest taka sama, od razu dane wszystkich stron mialbym posegregowane w jednym miejscu
 
 ;// Main:
 (async () => {
+    var smreqdata
     var data = {}
     data.rb_items = []
     data.sm_items = []
-    var sites = [data.rb_items]
+    var sites = [data.rb_items] // TODO niegotowe do dodania nastepnej strony, np filter1
 
-    var smreqdata
-    try{
+    try{    // Getting headers from file
     smreqdata = JSON.parse('{'+fs.readFileSync(PATH_HEADER,"utf8")+'}')
     }catch(err){
         console.log('Headers file error:')
@@ -110,8 +123,8 @@ const prepareRbItems = async function (pathRbDb) {
 
         { // Showing search stats
             const SPACE = "      "
-
-            console.log("Rustbet:")
+            console.log("Nameids added");
+            console.log("\nRustbet:")
             console.log(SPACE + `${stats.rb.found}/${data.rb_items.length} items found in smdb\n`)
 
             if (stats.rb.notfound != false)
@@ -122,32 +135,33 @@ const prepareRbItems = async function (pathRbDb) {
     var whitelist = []
     var blacklist = []
 
-   { // Filtering 1
+    { // Filtering 1
         
-        let popularx100 = 3
-        let unpopularx100 = 6
-        let totalitems
+        let popularx100 = 3   // The most popular items *100 to whitelist
+        let unpopularx100 = 12 // The most unpopular items *100 to blacklist
         
-        let precursor = await sm.getChunkOfSteamMarket({start:0,count:1,smreqdata})
+        
+        let options = {count: 100,search_descriptions: false, sort_column: 'popular', sort_dir: 'desc', appid: 252490,req_data: smreqdata}
+
+        let precursor = await sm.getChunkOfSteamMarket({...options,start:0,count:1})    // To get totalitems value
         if(precursor.success==false)
         {
             console.log("Failed to run precursor in filter 1: ")
             console.log(precursor.error)
             return false
         }
-        totalitems = precursor.info.total_count
+        let totalitems = precursor.info.total_count
 
-        let promisetab=[]
+        let promisetab=[] // Tab holding promises of all fetches in this filter
+
         // Whitelist: sm popular
-        let options = {search_descriptions: false, sort_column: 'popular', sort_dir: 'desc', appid: 252490}
         for (let i = 0; i < popularx100; i++) {
             let start = i * 100
-            promisetab.push(sm.getChunkOfSteamMarket({ count: 100, start: start, ...options, req_data: smreqdata }).then((resp, err) => {
-                console.log(`Promise tab 1 nr: ${i}`);
+            promisetab.push(sm.getChunkOfSteamMarket({...options,start: start}).then((resp, err) => {
+                //console.log(`Promise tab 1 nr: ${i}`);
                 if (err) {
                     console.log(`(getMarketSearch start: ${start})`);
-                    console.log(`Error while getting data to filter1: ${err}`)
-                    
+                    console.log(`Error while getting data to filter1: ${err}`) 
                 }
                 else if (resp.success != true) {
                     console.log(`(getMarketSearch start: ${start})`);
@@ -156,7 +170,6 @@ const prepareRbItems = async function (pathRbDb) {
                 }
                 else
                 {
-                    
                 for (let j = 0; j < resp.data.length; j++) {
                     whitelist.push(resp.data[j].hash_name)
                 }}
@@ -166,8 +179,8 @@ const prepareRbItems = async function (pathRbDb) {
         // Blacklist: sm unpopular
         for (let i = 0; i < unpopularx100; i++) {
             let start = totalitems-100*(unpopularx100-i)
-            promisetab.push(sm.getChunkOfSteamMarket({ count: 100, start: start, search_descriptions: false, sort_column: 'popular', sort_dir: 'desc', appid: 252490, req_data: smreqdata }).then((resp, err) => {
-                console.log(`Promise tab 2 nr: ${i}`);
+            promisetab.push(sm.getChunkOfSteamMarket({...options,start: start}).then((resp, err) => {
+                //console.log(`Promise tab 2 nr: ${i}`);
                 if (err) {
                     console.log(`(getMarketSearch start: ${start})`);
                     console.log(`Error while getting data to filter1: ${err}`)
@@ -185,7 +198,7 @@ const prepareRbItems = async function (pathRbDb) {
             }))
         }
 
-        console.log("Wait...");
+        console.log("Downloading market data...");
         let time_start=Date.now()
         await Promise.all(promisetab)
         let time_end=Date.now()
@@ -207,8 +220,25 @@ const prepareRbItems = async function (pathRbDb) {
         -
 
         */
+
+        // Deleting blacklisted items
+
+        var w=0,b=0
+
+        for (let i = 0; i < data.rb_items.length; i++) {         // TODO zmienic na site aby bylo latwo rozszerzalne
+            let itstat = itemStatus(data.rb_items[i].name,whitelist,blacklist)
+            if (itstat === 2)
+                {w++;continue}
+            else if(itstat === 1)
+                {b++;data.rb_items.splice(i,1)}
+
+        }
     }
     var itemcount = data.rb_items.length
+
+    console.log(`\n\nWhitelisted: ${w} Blacklisted: ${b}`)
+    console.log(`Items after filter 1: ${itemcount}\n`)
+
 
     { // Fetching sm data for each item      
         let time_start,time_end // measuring time
@@ -216,9 +246,7 @@ const prepareRbItems = async function (pathRbDb) {
         
         time_start = Date.now()
 
-        //{headers:{Cookie:fs.readFileSync(PATH_COOKIES,"utf8")}} 
-        //console.log(smheaders)
-        for (let sitenr = 0; sitenr < 1; sitenr++) //sites.length; sitenr++) 
+        for (let sitenr = 0; sitenr < sites.length; sitenr++) //sites.length; sitenr++) 
         {
             for (let itemnr = 0; itemnr < itemcount ; itemnr++) //itemnr < TMP_ITEM_LIMIT; itemnr++)
             {
@@ -258,7 +286,7 @@ const prepareRbItems = async function (pathRbDb) {
         for(let i = 0; i < sites.length; i++)
             items_sum+=sites[i].length
 
-        console.log(`Fetching all ${data.rb_items.length} items took ${(time_end-time_start)/1000} seconds`);
+        console.log(`\nFetching all ${data.rb_items.length} items took ${(time_end-time_start)/1000} seconds`);
     }
 
     var result = []
@@ -280,10 +308,8 @@ const prepareRbItems = async function (pathRbDb) {
         }
     }
 
-    console.log("XXXXXXXXXXXXXXXXXX")
-    result.sort((a,b)=>{return b.roe-a.roe})  // zle dziala
-
-
+    console.log("\nXXXXXXXXXXXXXXXXXX")
+    result.sort((a,b)=>{return b.roe-a.roe})  
 
     { // Filtering 2 (when we know real price of those items and roe)
         for (let sitenr = 0; sitenr < sites.length; sitenr++) 
