@@ -83,7 +83,7 @@ var TEST = false
 (async () => {
     var smreqdata
     var data = {}
-    data.info = {}
+    data.info = {} 
     data.info.sites = {}
     data.rb_items = []
     
