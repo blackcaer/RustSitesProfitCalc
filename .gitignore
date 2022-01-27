@@ -1,4 +1,5 @@
 node_modules/
+tmp/
 npm-debug.log
 "src/old item db"
 lib/getnameid_dbs/

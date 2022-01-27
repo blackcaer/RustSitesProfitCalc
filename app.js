@@ -19,13 +19,24 @@ const storeData = (data, path) => {
         fs.writeFileSync(path, JSON.stringify(data))
     } catch (err) {
         console.error(err)
+        return false
     }
+}
+
+const readData = (path) => {
+    try {
+        var data = JSON.parse(fs.readFileSync(path))
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+    return data
 }
 
 const prepareRbItems = async function (pathRbDb) {
     var items = []
     if (fs.existsSync(pathRbDb)) {
-        let tmp = JSON.parse(fs.readFileSync(pathRbDb, { encoding: 'utf8', flag: 'r' }))
+        let tmp = (JSON.parse(fs.readFileSync(pathRbDb, { encoding: 'utf8', flag: 'r' }))).items
 
         for (const item of tmp) {
             let pos = items.findIndex((el) => { return el.name === item.name })
@@ -66,14 +77,32 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
 // 2 - whitelist
 // 1 - blacklist
 // 0 - nothing
+var TEST = false
+
 ;// Main:
 (async () => {
     var smreqdata
     var data = {}
+    data.info = {}
+    data.info.sites = {}
     data.rb_items = []
+    
     data.sm_items = []
 
+    if (TEST===true)
+    {
+        let datatmp = readData('./tmp/data.txt')
+        if (!datatmp)
+            return false
+        data = datatmp 
+        console.log("LOADED PREV DATA");
+        
+    }
+
     var sites = [data.rb_items]
+    
+    data.info.sites.type = ["rustbet"]   // .type[i] == site name in sites[i]
+    let siteinfo = data.info.sites
 
     try{    // Getting headers from file
     smreqdata = JSON.parse('{'+fs.readFileSync(PATH_HEADER,"utf8")+'}')
@@ -82,6 +111,9 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
         console.log(err);
         return false
     }
+
+    if(TEST!==true) //for testing purposes only
+    {
 
     { // Preparing all items:
 
@@ -141,7 +173,7 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
     { // Filtering 1
 
         { // Site price
-
+        // needs .price
             let w=0,b=0
             
             for (let sitenr = 0; sitenr < sites.length; sitenr++) 
@@ -162,12 +194,14 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
 
                 }
             }
-            console.log(`\n\n1.1: Whitelisted: ${w} \nBlacklisted: ${b}`)
+            console.log(`\n\n1.1: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
         }
+
+        // Lists fetched from steam market search, needed to avoid repeating the same market fetches for all sites
         let whitelist = []
         let blacklist = []
+
         { // Popularity on steam market
-            
             let popularx100 = 3   // The most popular items *100 to whitelist
             let unpopularx100 = 13 // The most unpopular items *100 to blacklist
             
@@ -234,63 +268,44 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
             console.log(`Market search data fetched in ${(t2-t1)/1000} s`)
         }
 
-        /*console.log('\nWHITELIST: ');
-        console.log(whitelist)
-        console.log('BLACKLIST: ');
-        console.log(blacklist)*/
-        /*
-        bezwzgledna whitelista i blacklista
-        whitelist>blacklist
-        
-        cena rb > popularnosc steam
+        { // Displaying info and setting liststatus after filtering 1.2 
+            let w=0,b=0
 
-        kryteria:
-        -popularnosc (np 300 pierwszych W, 600 last B)
-        -cena na rb (np (>30$) W, <0.5$ B)
-        -
+            for (let sitenr = 0; sitenr < sites.length; sitenr++) {
+                for (let i = 0; i < sites[sitenr].length; i++) {
+                    let item = sites[sitenr][i]
+                    if(item.liststatus===1 || item.liststatus===2)
+                        continue
+                    //console.log(whitelist,blacklist);
 
-        */
+                    let itstat = checkLists(item.name, whitelist, blacklist)
 
-        // Deleting blacklisted items
-
-        { // Displaying info after filtering 1.2
-        let w=0,b=0
-
-        for (let sitenr = 0; sitenr < sites.length; sitenr++) {
-            for (let i = 0; i < sites[sitenr].length; i++) {
-                let item = sites[sitenr][i]
-                if(item.liststatus!==0 && item.liststatus!==undefined)
-                    continue
-                //console.log(whitelist,blacklist);
-
-                let itstat = checkLists(item.name, whitelist, blacklist)
-
-                if (itstat === 2) { item.liststatus = itstat; w++}
-                else if (itstat === 1 && item.liststatus == 0) { item.liststatus = itstat; b++}
+                    if (itstat === 2) { item.liststatus = itstat; w++}
+                    else if (itstat === 1) { item.liststatus = itstat; b++}
+                }
             }
-        }
 
-        console.log(`\n\n1.2: Whitelisted: ${w} \nBlacklisted: ${b}`)
+            console.log(`\n\n1.2: Whitelisted: ${w} \nBlacklisted: ${b}`)
         }
         //console.log(`Items after filter 1: ${itemcount}\n`)
     }
     
     { // Fetching sm data for each item      
-        let time_start,time_end // measuring time
+        let tstart,tend // measuring time
         // Rustbet: 
         
-        time_start = Date.now()
-
+        tstart = Date.now()
+        let count=0
         for (let sitenr = 0; sitenr < sites.length; sitenr++) //sites.length; sitenr++) 
         {
-            for (let itemnr = 0; itemnr < sites[sitenr].length ; itemnr++) //itemnr < TMP_ITEM_LIMIT; itemnr++)
+            for (let itemtabnr = 0; itemtabnr < sites[sitenr].length ; itemtabnr++) //itemnr < TMP_ITEM_LIMIT; itemnr++)
             {
-                let item = sites[sitenr][itemnr]     //shortcut
+                let item = sites[sitenr][itemtabnr]     //shortcut
                 
-                if(item.liststatus==1)
+                if(item.liststatus===1)
                     continue
-
-                console.log(`Item nr ${itemnr} : ${item.name}`);    // status
+                
+                console.log(`Item nr ${count} : ${item.name}`);    // status
 
                 let options = {cd_tooManyRequest_error:5000,maxTMRerrInRow:1,appid:252490, nameid : item.nameid, hash_name:item.name,req_data:smreqdata, logErr:true, logInfo:true}
                 let tmp     // Variable holding actual response from getData (with histogram/priceoverview etc./)
@@ -304,11 +319,12 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
                 {
                     console.log(`Error while getting histogram: "${tmp.error}"`)
                     console.log(`GetData success: ${tmp.success}`)
-                    console.log(`Histogram success: ${tmp.response.success}`)
+                    if(tmp.response != undefined)
+                        console.log(`Histogram success: ${tmp.response.success}`)
                     item.sm_data.status.allgood = false
                     item.sm_data.status.histogram = false
                 }
-
+                count++
                 // reszta wsm useless poki co a problemy robi, priceoverview jest zawarte w histogramie
                 /*
                 options.type = "pricehistory"
@@ -318,18 +334,20 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
                 */
             }
         }
-        // Stats:
-        time_end = Date.now()
-        let items_sum=0
-        for(let i = 0; i < sites.length; i++)
-            items_sum+=sites[i].length
+        
+        tend = Date.now()
 
-        console.log(`\nFetching all ${data.rb_items.length} items took ${(time_end-time_start)/1000} seconds`);
+        console.log(`\nFetching all ${data.rb_items.length} items took ${(tend-tstart)/1000} seconds`);
     }
 
-    var result = []
-
-    { // Analyzing
+    }
+    {   // for testing purposes only
+        if (TEST!==true)
+        {storeData(data,'./tmp/data.txt')}
+    }
+    
+    sites
+    { // Calculating .roe
         for (let sitenr = 0; sitenr < sites.length; sitenr++) 
         {
             for (let itemnr = 0; itemnr < sites[sitenr].length; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
@@ -337,20 +355,32 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
                 let item = sites[sitenr][itemnr]
                 if(item.liststatus===1)
                     continue
-
-                { // Rustbet
-                    item.roe = (item.sm_data.histogram.lowest_sell_order/100) / item.price // steam price / site price
-                    //console.log(item.roe)
-                    if(item.roe>4.4)        // TODO temporary
-                        result.push(item)
-                }
-
+                    
+                item.roe = (item.sm_data.histogram.lowest_sell_order/100) / item.price // steam price / site price
             }
         }
     }
 
+    var results={}
+    
+    { // Sorting by roe
+        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
+        {
+            results[siteinfo.type[sitenr]] = {roe:[]}
+            let restab = results[siteinfo.type[sitenr]].roe
+
+            for (let itemnr = 0; itemnr < sites[sitenr].length; itemnr++)
+                {
+                    let item = sites[sitenr][itemnr]
+                    if(item.liststatus !== 1)
+                        restab.push(item)
+                }
+            
+            restab.sort((a,b)=>{return a.roe-b.roe})    // asc
+        }
+    }
     console.log("\nXXXXXXXXXXXXXXXXXX")
-    result.sort((a,b)=>{return b.roe-a.roe})  
+      
 
     { // Filtering 2 (when we know real price of those items and roe)
 
@@ -373,25 +403,40 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
 
     }
 
+    let sredni_kurs_suma=0
+    let sredni_kurs_count=0
     { // Display
-        for (item of result)
+        for (sitename of data.info.sites.type)
         {
-            console.log(`${item.name} :  ${item.roe} \n`);
+            console.log(`\n        ${sitename}:`)
+            for(item of results[sitename].roe)
+            {
+                //if(item.roe<4.5)
+                //    break
+                if(item.liststatus===2)
+                    console.log(`==wl==\n${item.name} :  ${item.roe}\n`);
+                else
+                    console.log(`${item.name} :  ${item.roe} \n`);
+                
+                sredni_kurs_suma += item.roe
+                sredni_kurs_count++
+            }
+            
         }
-
+        console.log(`\nŚredni kurs tych przedmiotów to ${sredni_kurs_suma/sredni_kurs_count}`);
     }
 
-    //  (kurs nagrody * 0,85)/kurs beta -1 = game sum (??razcej ta)
+    //  0,85 * kN/kS - 1 = suma gry
 
     //optymalizacja:
     //fetchowanie sm tylko w danym zakresie cenowym (dział 'filtering' tuz po preparing)
 
     //obsluga bledow przy kazdym json parse
+
 })();//end main IFEE func
 
 
 // https://rustbet.com/api/steamInventory   jesli zalogowany
-// https://rustbet.com/api/upgrader/stock?order=1&max=20
 // https://rustbet.com/api/upgrader/stock?order=-1&max=9999&count=28000
 // https://steamcommunity.com/market/search/render/?query=&start=0&norender=1&count=100&search_descriptions=0&sort_column=popular&sort_dir=desc&appid=252490
 // 
@@ -404,6 +449,7 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
     color: 'a7ec2e',
     locked: false,
     price: 7.2
+    liststatus : 2
   }
 */
 
