@@ -71,6 +71,33 @@ const checkLists = function(name="",whitelist=[],blacklist=[]){
         return 0
     
 }
+
+const filter1part1 = function({item,Wfrom=10,Bto=0.3}={}){
+    // needs .price
+    let listAs = 0
+    // sitesplace
+    try{
+        if (item.price < 0)     // whitelist
+        {
+            console.log(`======================= NEGATIVE PRICE VALUE AT ${item.name} =======================`)
+            item.liststatus = listAs;w++
+        } else if (item.price >= Wfrom)  // whitelist
+            item.liststatus = listAs;
+        else if (item.price <= Bto)    // blacklist
+            item.liststatus = listAs;
+
+        item.liststatus = listAs
+    }catch(error){
+        return {"success":false,"error":("filter1part1 error: "+error)}
+    }
+    return {"success":true,"list":listAs}
+
+}
+
+const filter1part2 = function({item}={}){
+;
+
+}
 // glowny plik do zbierania danych z wielu stron, wszak analiza wszędzie jest taka sama, od razu dane wszystkich stron mialbym posegregowane w jednym miejscu
 
 // .liststatus
@@ -83,26 +110,21 @@ var TEST = false
 (async () => {
     var smreqdata
     var data = {}
-    data.info = {} 
-    data.info.sites = {}
-    data.rb_items = []
-    
-    data.sm_items = []
+    data.sites={}
+    data.sites["rustbet"]={info:{name:"rustbet",filter1:true},data:[]}
 
-    if (TEST===true)
+    /*if (TEST===true)
     {
         let datatmp = readData('./tmp/data.txt')
         if (!datatmp)
             return false
         data = datatmp 
         console.log("LOADED PREV DATA");
-        
-    }
+    }*/
 
-    var sites = [data.rb_items]
-    
-    data.info.sites.type = ["rustbet"]   // .type[i] == site name in sites[i]
-    let siteinfo = data.info.sites
+    //var sites = [data.rb_items]
+    //data.info.sites.type = ["rustbet"]   // .type[i] == site name in sites[i]
+    //let siteinfo = data.info.sites
 
     try{    // Getting headers from file
     smreqdata = JSON.parse('{'+fs.readFileSync(PATH_HEADER,"utf8")+'}')
@@ -112,8 +134,8 @@ var TEST = false
         return false
     }
 
-    if(TEST!==true) //for testing purposes only
-    {
+    //if(TEST!==true) //for testing purposes only
+    //{
 
     { // Preparing all items:
 
@@ -133,7 +155,6 @@ var TEST = false
         {
             data.sm_items.push(...JSON.parse(fs.readFileSync(PATH_SM_ITEMDB, { encoding: 'utf8', flag: 'r' })))
         }
-
     }
     
     { // Adding nameid to items
@@ -143,7 +164,7 @@ var TEST = false
             stats.rb = {}
             stats.rb.found = 0
             stats.rb.notfound = []
-
+            // sitesplace
             for (let i = 0; i < data.rb_items.length; i++) {
                 let currname = data.rb_items[i].name
                 let found = data.sm_items.find(el => el.name === currname)
@@ -159,7 +180,7 @@ var TEST = false
             }
         }
 
-        { // Showing search stats
+        { // Showing statistics, errors
             const SPACE = "      "
             console.log("Nameids added");
             console.log("\nRustbet:")
@@ -170,110 +191,108 @@ var TEST = false
         }
     }
 
-    { // Filtering 1
+    // MAIN SITES LOOP
+    for(let sitename in data.sites){// sites:
+        var sitedata = data[sitename].data
 
-        { // Site price
-        // needs .price
-            let w=0,b=0
-            
-            for (let sitenr = 0; sitenr < sites.length; sitenr++) 
-            {
-                for (let itemnr = 0; itemnr < sites[sitenr].length; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
+        { // Filtering 1
+
+            { // Site price
+                let b=0,w=0
+                for (let itemnr = 0; itemnr < sitedata[sitename].length; itemnr++)
                 {
-                    let item = sites[sitenr][itemnr]
-                    item.liststatus = 0
-
-                    if (item.price < 0)     // whitelist
+                    let result=filter1part1({'item':sitedata[itemnr]})
+                    if (result.success && result.list!==0)
+                        if(result.list===2)
+                            w++
+                        else if(result.list===1)
+                            b++
+                    else
                     {
-                        console.log(`======================= NEGATIVE PRICE VALUE AT ${item.name} =======================`)
-                        item.liststatus = 2;w++
-                    } else if (item.price >= 10)  // whitelist
-                        {item.liststatus = 2;w++}
-                    else if (item.price <= 0.3)    // blacklist
-                        {item.liststatus = 1;b++}
-
+                        console.log(`Error in item ${sitedata[itemnr].name}:`);
+                        console.log(result.error);
+                    }
                 }
+                console.log(`\n\n1.1: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
             }
-            console.log(`\n\n1.1: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
-        }
 
-        // Lists fetched from steam market search, needed to avoid repeating the same market fetches for all sites
-        let whitelist = []
-        let blacklist = []
+            // Lists fetched from steam market search, needed to avoid repeating the same market fetches for all sites
+            let whitelist = []
+            let blacklist = []
 
-        { // Popularity on steam market
-            let popularx100 = 3   // The most popular items *100 to whitelist
-            let unpopularx100 = 13 // The most unpopular items *100 to blacklist
-            
-            let options = {count: 100,search_descriptions: false, sort_column: 'popular', sort_dir: 'desc', appid: 252490,req_data: smreqdata}
+            { // Popularity on steam market
+                let popularx100 = 3   // The most popular items *100 to whitelist
+                let unpopularx100 = 13 // The most unpopular items *100 to blacklist
+                
+                let options = {count: 100,search_descriptions: false, sort_column: 'popular', sort_dir: 'desc', appid: 252490,req_data: smreqdata}
 
-            let precursor = await sm.getChunkOfSteamMarket({...options,start:0,count:1})    // To get totalitems value
-            if(precursor.success==false)
-            {
-                console.log("Failed to run precursor in filter 1: ")
-                console.log(precursor.error)
-                return false
-            }
-            let totalitems = precursor.info.total_count
+                let precursor = await sm.getChunkOfSteamMarket({...options,start:0,count:1})    // To get totalitems value
+                if(precursor.success==false)
+                {
+                    console.log("Failed to run precursor in filter 1: ")
+                    console.log(precursor.error)
+                    return false
+                }
+                let totalitems = precursor.info.total_count
 
-            let promisetab=[] // Tab holding promises of all fetches in this filter
+                let promisetab=[] // Tab holding promises of all fetches in this filter
 
-            // Whitelist: sm popular
-            for (let i = 0; i < popularx100; i++) 
-            {
-                let start = i * 100
-                promisetab.push(sm.getChunkOfSteamMarket({...options,start: start}).then((resp, err) => {
-                    //console.log(`Promise tab 1 nr: ${i}`);
+                // Whitelist: sm popular
+                for (let i = 0; i < popularx100; i++) 
+                {
+                    let start = i * 100
+                    promisetab.push(sm.getChunkOfSteamMarket({...options,start: start}).then((resp, err) => {
+                        //console.log(`Promise tab 1 nr: ${i}`);
+                        if (err) {
+                            console.log(`(getMarketSearch start: ${start})`);
+                            console.log(`Error while getting data to filter1: ${err}`) 
+                        }
+                        else if (resp.success != true) {
+                            console.log(`(getMarketSearch start: ${start})`);
+                            console.log(`Error while getting data to filter1: data success isn't true`)
+                        }
+                        else
+                        {
+                        for (let j = 0; j < resp.data.length; j++) {
+                            whitelist.push(resp.data[j].hash_name)
+                        }}
+                    }))
+                }
+                // Blacklist: sm unpopular
+                for (let i = 0; i < unpopularx100; i++) 
+                {
+                    let start = totalitems-100*(unpopularx100-i)
+                    promisetab.push(sm.getChunkOfSteamMarket({...options,start: start}).then((resp, err) => {
+                    //console.log(`Promise tab 2 nr: ${i}`);
                     if (err) {
                         console.log(`(getMarketSearch start: ${start})`);
-                        console.log(`Error while getting data to filter1: ${err}`) 
+                        console.log(`Error while getting data to filter1: ${err}`)  
                     }
                     else if (resp.success != true) {
                         console.log(`(getMarketSearch start: ${start})`);
                         console.log(`Error while getting data to filter1: data success isn't true`)
                     }
-                    else
-                    {
+                    else{
                     for (let j = 0; j < resp.data.length; j++) {
-                        whitelist.push(resp.data[j].hash_name)
+                        blacklist.push(resp.data[j].hash_name)
                     }}
                 }))
-            }
-            // Blacklist: sm unpopular
-            for (let i = 0; i < unpopularx100; i++) 
-            {
-                let start = totalitems-100*(unpopularx100-i)
-                promisetab.push(sm.getChunkOfSteamMarket({...options,start: start}).then((resp, err) => {
-                //console.log(`Promise tab 2 nr: ${i}`);
-                if (err) {
-                    console.log(`(getMarketSearch start: ${start})`);
-                    console.log(`Error while getting data to filter1: ${err}`)  
                 }
-                else if (resp.success != true) {
-                    console.log(`(getMarketSearch start: ${start})`);
-                    console.log(`Error while getting data to filter1: data success isn't true`)
-                }
-                else{
-                for (let j = 0; j < resp.data.length; j++) {
-                    blacklist.push(resp.data[j].hash_name)
-                }}
-            }))
+            
+                console.log("Downloading market data...");
+                let t1=Date.now()
+                await Promise.all(promisetab)
+                let t2=Date.now()
+
+                console.log(`Market search data fetched in ${(t2-t1)/1000} s`)
             }
-        
-            console.log("Downloading market data...");
-            let t1=Date.now()
-            await Promise.all(promisetab)
-            let t2=Date.now()
 
-            console.log(`Market search data fetched in ${(t2-t1)/1000} s`)
-        }
+            { // Displaying info and setting liststatus after filtering 1.2 
+                let w=0,b=0
 
-        { // Displaying info and setting liststatus after filtering 1.2 
-            let w=0,b=0
-
-            for (let sitenr = 0; sitenr < sites.length; sitenr++) {
-                for (let i = 0; i < sites[sitenr].length; i++) {
-                    let item = sites[sitenr][i]
+                // sitesplace
+                for (let i = 0; i < sitedata[sitename].length; i++) {
+                    let item = sitedata[sitename][i]
                     if(item.liststatus===1 || item.liststatus===2)
                         continue
                     //console.log(whitelist,blacklist);
@@ -283,24 +302,23 @@ var TEST = false
                     if (itstat === 2) { item.liststatus = itstat; w++}
                     else if (itstat === 1) { item.liststatus = itstat; b++}
                 }
-            }
+                
 
-            console.log(`\n\n1.2: Whitelisted: ${w} \nBlacklisted: ${b}`)
+                console.log(`\n\n1.2: Whitelisted: ${w} \nBlacklisted: ${b}`)
+            }
+            //console.log(`Items after filter 1: ${itemcount}\n`)
         }
-        //console.log(`Items after filter 1: ${itemcount}\n`)
-    }
-    
-    { // Fetching sm data for each item      
-        let tstart,tend // measuring time
-        // Rustbet: 
         
-        tstart = Date.now()
-        let count=0
-        for (let sitenr = 0; sitenr < sites.length; sitenr++) //sites.length; sitenr++) 
-        {
-            for (let itemtabnr = 0; itemtabnr < sites[sitenr].length ; itemtabnr++) //itemnr < TMP_ITEM_LIMIT; itemnr++)
+        { // Fetching sm data for each item      
+            let tstart,tend // measuring time
+            // Rustbet: 
+            
+            tstart = Date.now()
+            let count=0
+            // sitesplace
+            for (let itemtabnr = 0; itemtabnr < sitedata[sitename].length ; itemtabnr++) //itemnr < TMP_ITEM_LIMIT; itemnr++)
             {
-                let item = sites[sitenr][itemtabnr]     //shortcut
+                let item = sitedata[sitename][itemtabnr]     //shortcut
                 
                 if(item.liststatus===1)
                     continue
@@ -333,80 +351,73 @@ var TEST = false
                 item.sm_data.priceoverview = await sm.getData(options)
                 */
             }
-        }
         
-        tend = Date.now()
+            tend = Date.now()
 
-        console.log(`\nFetching all ${data.rb_items.length} items took ${(tend-tstart)/1000} seconds`);
-    }
+            console.log(`\nFetching all ${data.rb_items.length} items took ${(tend-tstart)/1000} seconds`);
+        }
 
-    }
-    {   // for testing purposes only
-        if (TEST!==true)
-        {storeData(data,'./tmp/data.txt')}
-    }
-    
-    sites
-    { // Calculating .roe
-        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
-        {
-            for (let itemnr = 0; itemnr < sites[sitenr].length; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
+        //{   // for testing purposes only
+        //    if (TEST!==true)
+        //    {storeData(data,'./tmp/data.txt')}
+        //}
+        
+
+        { // Calculating .roe
+            // sitesplace
+            for (let itemnr = 0; itemnr < sitedata[sitename].length; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
             {
-                let item = sites[sitenr][itemnr]
+                let item = sitedata[sitename][itemnr]
                 if(item.liststatus===1)
                     continue
                     
                 item.roe = (item.sm_data.histogram.lowest_sell_order/100) / item.price // steam price / site price
             }
         }
-    }
 
-    var results={}
-    
-    { // Sorting by roe
-        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
-        {
+        var results={}
+        
+        { // Sorting by roe
+            // sitesplace
             results[siteinfo.type[sitenr]] = {roe:[]}
             let restab = results[siteinfo.type[sitenr]].roe
 
-            for (let itemnr = 0; itemnr < sites[sitenr].length; itemnr++)
+            for (let itemnr = 0; itemnr < sitedata[sitename].length; itemnr++)
                 {
-                    let item = sites[sitenr][itemnr]
+                    let item = sitedata[sitename][itemnr]
                     if(item.liststatus !== 1)
                         restab.push(item)
                 }
             
             restab.sort((a,b)=>{return a.roe-b.roe})    // asc
+        
         }
-    }
-    console.log("\nXXXXXXXXXXXXXXXXXX")
-      
 
-    { // Filtering 2 (when we know real price of those items and roe)
+        { // Filtering 2 (when we know real price of those items and roe)
 
-        for (let sitenr = 0; sitenr < sites.length; sitenr++) 
-        {
-            for (let itemnr = 0; itemnr < sites[sitenr].length; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
+            // sitesplace
+            for (let itemnr = 0; itemnr < sitedata[sitename].length; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
             {
                 ;
 
             }
+        
+    
         }
- 
+
+        { // Getting volume from priceoverview
+
+        }
+
+        { // Filtering 3 
+
+        }
+
     }
-
-    { // Getting volume from priceoverview
-
-    }
-
-    { // Filtering 3 
-
-    }
-
-    let sredni_kurs_suma=0
-    let sredni_kurs_count=0
     { // Display
-        for (sitename of data.info.sites.type)
+        let sredni_kurs_suma=0
+        let sredni_kurs_count=0
+        for (sitename of data.info.sites.type)  //TODO change
         {
             console.log(`\n        ${sitename}:`)
             for(item of results[sitename].roe)
