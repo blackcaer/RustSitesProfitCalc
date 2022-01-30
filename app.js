@@ -43,6 +43,7 @@ const prepareRbItems = async function (pathRbDb) {
             if (pos === -1) {
                 items.push(item)
                 items[items.length - 1].quantity = 1
+                
                 continue
             }
             items[pos].quantity++
@@ -72,39 +73,36 @@ const checkLists = function (name = "", whitelist = [], blacklist = []) {
 
 }
 
-const filter1part1 = function ({ item, Wfrom = 10, Bto = 0.3 } = {}) {
-    // needs .price
+const filter1part1 = function ({ item, Wfrom = 10, Bto = 0.3, } = {}) {
+    // needs item.price
+
     let listAs = 0
-    // sitesplace
     try {
         if (item.price < 0)     // whitelist
-        {
-            console.log(`======================= NEGATIVE PRICE VALUE AT ${item.name} =======================`)
-            item.liststatus = listAs; w++
-        } else if (item.price >= Wfrom)  // whitelist
-            item.liststatus = listAs;
+            listAs = 2
+        else if (item.price >= Wfrom)  // whitelist
+            listAs = 2
         else if (item.price <= Bto)    // blacklist
-            item.liststatus = listAs;
+            listAs = 1
 
-        item.liststatus = listAs
     } catch (error) {
         return { "success": false, "error": ("filter1part1 error: " + error) }
     }
-    return { "success": true, "list": listAs }
+    return { "success": true, "list": listAs, }
 
 }
 
-const getMarketWBlists = function ({ popularx100 = 3, unpopularx100 = 13 } = {}) {
+const getMarketWBlists = async function ({ req_data={},count= 100, search_descriptions= false, sort_column= 'popular', sort_dir= 'desc', appid= 252490,popularx100 = 3, unpopularx100 = 13 } = {}) {      // TODO sprawdzic czy trzeba async dopisac
     // The most popular items *100 to whitelist
     // The most unpopular items *100 to blacklist
     let whitelist = [], blacklist = []
-    let options = { count: 100, search_descriptions: false, sort_column: 'popular', sort_dir: 'desc', appid: 252490, req_data: smreqdata }
+    let options = { count: count, search_descriptions: search_descriptions, sort_column: sort_column, sort_dir: sort_dir, appid: appid, req_data: req_data }
 
     let precursor = await sm.getChunkOfSteamMarket({ ...options, start: 0, count: 1 })    // To get totalitems value
     if (precursor.success == false) {
         console.log("Failed to run precursor in filter 1: ")
         console.log(precursor.error)
-        return { 'success': false, 'error': precursor.error }
+        return { 'success': false, 'error': ("Failed to run precursor in filter 1: "+precursor.error)}
     }
     let totalitems = precursor.info.total_count
 
@@ -180,8 +178,8 @@ var TEST = false
     var smreqdata
     var data = {}
     data.sites = {}
-    data.sites["rustbet"] = { info: { name: "rustbet", filter1: true }, data: [] }
-
+    data.sites["rustbet"] = { info: { name: "rustbet", filter1: true }, data: [] }  // key schould === .name
+    data.sm_items = []
     /*if (TEST===true)
     {
         let datatmp = readData('./tmp/data.txt')
@@ -190,10 +188,6 @@ var TEST = false
         data = datatmp 
         console.log("LOADED PREV DATA");
     }*/
-
-    //var sites = [data.rb_items]
-    //data.info.sites.type = ["rustbet"]   // .type[i] == site name in sites[i]
-    //let siteinfo = data.info.sites
 
     try {    // Getting headers from file
         smreqdata = JSON.parse('{' + fs.readFileSync(PATH_HEADER, "utf8") + '}')
@@ -217,7 +211,7 @@ var TEST = false
                 return false
             }
             else    // if good
-                data.rb_items.push(...rb_fetch_result.items)
+                data.sites["rustbet"].data.push(...rb_fetch_result.items)
         }
 
         // Preparing sm_market database:
@@ -227,23 +221,25 @@ var TEST = false
     }
 
     { // Adding nameid to items
-        let stats = {}
+        let stats = {}  // statistics of found/not found items etc
 
-        { // rb_items:
+        { // "rustbet":
             stats.rb = {}
             stats.rb.found = 0
             stats.rb.notfound = []
+            let rbdata = data.sites["rustbet"].data
             // sitesplace
-            for (let i = 0; i < data.rb_items.length; i++) {
-                let currname = data.rb_items[i].name
+            for (let i = 0; i < rbdata.length; i++) {
+                let currname = rbdata[i].name
                 let found = data.sm_items.find(el => el.name === currname)
                 if (found === undefined) {
-                    //console.log(`Not found: ${currname}`);
                     stats.rb.notfound.push(currname)
+                    rbdata.splice(i,1)
+                    i--
                     continue
                 }
                 stats.rb.found++
-                data.rb_items[i].nameid = found.nameid
+                rbdata[i].nameid = found.nameid
                 //console.log(`Item found: ${found.name}`)
             }
         }
@@ -252,118 +248,123 @@ var TEST = false
             const SPACE = "      "
             console.log("Nameids added");
             console.log("\nRustbet:")
-            console.log(SPACE + `${stats.rb.found}/${data.rb_items.length} items found in smdb\n`)
+            console.log(SPACE + `${stats.rb.found}/${data.sites["rustbet"].data.length + stats.rb.notfound.length} items found in smdb\n`)
 
             if (stats.rb.notfound != false)
-                console.log(SPACE + `Not found: \n ${stats.rb.notfound}\n`)
+                console.log(SPACE + `Not found: \n${stats.rb.notfound}\n`)
         }
     }
 
+    // Lists fetched from steam market search in filter 1.2 (by getMarketWBlists), needed to avoid repeating the same market fetches for all sites:
+    var whitelist_smmarket = []
+    var blacklist_smmarket = []
+
+    { // Popularity on steam market (filter 1.2 loading)
+        let wbresult = await getMarketWBlists({req_data:smreqdata, popularx100:3, unpopularx100:13 }) // await?
+        if (wbresult.success == true) {
+            whitelist_smmarket = wbresult.whitelist
+            blacklist_smmarket = wbresult.blacklist
+        } else {
+            console.log(wbresult.err)
+            console.log("TENTEN");
+            return false    //TODO obsluga bledu, np globalna lista bledow wyswietlana pod koniec
+        }
+    }
+
+    var results = {}    // results.<sitename>.<resulttype>
+
     // MAIN SITES LOOP
     for (let sitename in data.sites) {// sites:
-        var sitedata = data[sitename].data
+        var sitedata = data.sites[sitename].data
 
-        { // Filtering 1
+        { // Filter 1
 
             { // Site price
                 let b = 0, w = 0 // counters
-                for (let itemnr = 0; itemnr < sitedata[sitename].length; itemnr++) {
-                    let result = filter1part1({ 'item': sitedata[itemnr] })
-                    if (result.success && result.list !== 0)
+                for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
+                    let item = sitedata[itemnr]
+                    // Notify if negative price value:
+                    if(item.price <= 0)
+                        console.log(`======================= NEGATIVE PRICE VALUE IN ${item.name} =======================`)
+                    
+                    let result = filter1part1({ 'item': item })
+                    if (result.success)
+                    {
                         if (result.list === 2)
                             w++
                         else if (result.list === 1)
                             b++
-                        else {
-                            console.log(`Error in item ${sitedata[itemnr].name}:`);
-                            console.log(result.error);
-                        }
+                        item.liststatus = result.list
+                    }else
+                    {
+                        console.log(`F1.1 Error in item ${item.name}:`);
+                        console.log(result.error);
+                    }
                 }
                 console.log(`\n\n1.1: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
             }
 
-            // Lists fetched from steam market search, needed to avoid repeating the same market fetches for all sites
-            let whitelist = []
-            let blacklist = []
-
-            { // Popularity on steam market
-                let wbresult = getMarketWBlists({ popularx100=3, unpopularx100=13 }) // await?
-                if (wbresult.success == true) {
-                    whitelist = wbresult.whitelist
-                    blacklist = wbresult.blacklist
-                } else {
-                    console.log(wbresult.err)
-                    return false    //TODO obsluga bledu, np globalna lista bledow wyswietlana pod koniec
-                }
-            }
-
-            { // Displaying info and setting liststatus after filtering 1.2 
-                let w = 0, b = 0
+            { // Filter 1.2 with display
+                let w = 0, b = 0    // counters
 
                 // sitesplace
-                for (let i = 0; i < sitedata[sitename].length; i++) {
-                    let item = sitedata[sitename][i]
-                    if (item.liststatus === 1 || item.liststatus === 2)
+                for (let i = 0; i < sitedata.length; i++) {
+                    let item = sitedata[i]
+                    if (item.liststatus === 1 || item.liststatus === 2) 
                         continue
-                    //console.log(whitelist,blacklist);
 
-                    let itstat = checkLists(item.name, whitelist, blacklist)
+                    // >here< only items with liststatus == 0 or undefined
 
-                    if (itstat === 2) { item.liststatus = itstat; w++ }
+                    let itstat = checkLists(item.name, whitelist_smmarket, blacklist_smmarket)
+
+                    if (itstat === 2) { item.liststatus = itstat; w++ }         // Ifs for counting 
                     else if (itstat === 1) { item.liststatus = itstat; b++ }
                 }
 
 
-                console.log(`\n\n1.2: Whitelisted: ${w} \nBlacklisted: ${b}`)
+                console.log(`\n\nF 1.2 ${sitename}: Whitelisted: ${w} \nBlacklisted: ${b}`)
             }
-            //console.log(`Items after filter 1: ${itemcount}\n`)
+
         }
 
         { // Fetching sm data for each item      
-            let tstart, tend // measuring time
+            let tstart, tend // Measuring time
             // Rustbet: 
 
             tstart = Date.now()
             let count = 0
             // sitesplace
-            for (let itemtabnr = 0; itemtabnr < sitedata[sitename].length; itemtabnr++) //itemnr < TMP_ITEM_LIMIT; itemnr++)
+            for (let itemtabnr = 0; itemtabnr < sitedata.length; itemtabnr++) 
             {
-                let item = sitedata[sitename][itemtabnr]     //shortcut
-
-                if (item.liststatus === 1)
+                let item = sitedata[itemtabnr]
+                count++
+                if (item.liststatus === 1)  // If blacklisted
                     continue
 
                 console.log(`Item nr ${count} : ${item.name}`);    // status
 
                 let options = { cd_tooManyRequest_error: 5000, maxTMRerrInRow: 1, appid: 252490, nameid: item.nameid, hash_name: item.name, req_data: smreqdata, logErr: true, logInfo: true }
-                let tmp     // Variable holding actual response from getData (with histogram/priceoverview etc./)
-                item.sm_data = { "status": { "allgood": true, "histogram": true } }     // if error, overwrite bad one to false and .allgood to false
+                let GDresp     // Variable holding actual response from getData (with histogram/priceoverview etc./)
+                item.sm_data = { "status": { "allgood": true, "histogram": true } }     // if error, overwrite bad one to false and .allgood to false, TODO check if it is needed
 
                 options.type = "histogram"
-                tmp = await sm.getData(options)
-                if (tmp.success == true && tmp.response.success === 1)
-                    item.sm_data.histogram = tmp.response
+                GDresp = await sm.getData(options)      // TODO try to make it async if possible
+                if (GDresp.success == true && GDresp.response.success === 1)
+                    item.sm_data.histogram = GDresp.response
                 else {
-                    console.log(`Error while getting histogram: "${tmp.error}"`)
-                    console.log(`GetData success: ${tmp.success}`)
-                    if (tmp.response != undefined)
-                        console.log(`Histogram success: ${tmp.response.success}`)
+                    console.log(`Error while getting histogram: "${GDresp.error}"`)
+                    console.log(`GetData success: ${GDresp.success}`)
+                    if (GDresp.response != undefined)
+                        console.log(`Histogram success: ${GDresp.response.success}`)
                     item.sm_data.status.allgood = false
                     item.sm_data.status.histogram = false
                 }
-                count++
-                // reszta wsm useless poki co a problemy robi, priceoverview jest zawarte w histogramie
-                /*
-                options.type = "pricehistory"
-                item.sm_data.pricehistory = await sm.getData(options)
-                options.type = "priceoverview"
-                item.sm_data.priceoverview = await sm.getData(options)
-                */
+                
             }
 
             tend = Date.now()
 
-            console.log(`\nFetching all ${data.rb_items.length} items took ${(tend - tstart) / 1000} seconds`);
+            console.log(`\nFetching all ${count} items for ${sitename} took ${(tend - tstart) / 1000} seconds`);
         }
 
         //{   // for testing purposes only
@@ -371,42 +372,45 @@ var TEST = false
         //    {storeData(data,'./tmp/data.txt')}
         //}
 
-
         { // Calculating .roe
             // sitesplace
-            for (let itemnr = 0; itemnr < sitedata[sitename].length; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
+            for (let itemnr = 0; itemnr < sitedata.length; itemnr++)
             {
-                let item = sitedata[sitename][itemnr]
-                if (item.liststatus === 1)
+                let item = sitedata[itemnr]
+                if (item.liststatus === 1)  // if Blisted
                     continue
 
-                item.roe = (item.sm_data.histogram.lowest_sell_order / 100) / item.price // steam price / site price
+                if (item.sm_data.status.histogram == true)
+                    try{
+                    item.roe = (item.sm_data.histogram.lowest_sell_order / 100) / item.price // steam price / site price
+                    }catch(err)
+                    {console.log(`ERROR while trying to set roe for item ${item.name}: ${err}`)}
+                else
+                    console.log(`Error: Item status for ${item.name} histogram is false`);
             }
         }
 
-        var results = {}
 
         { // Sorting by roe
             // sitesplace
-            results[siteinfo.type[sitenr]] = { roe: [] }
-            let restab = results[siteinfo.type[sitenr]].roe
+            results[sitename] = { roe: [] }
+            let restab = results[sitename].roe
 
-            for (let itemnr = 0; itemnr < sitedata[sitename].length; itemnr++) {
-                let item = sitedata[sitename][itemnr]
+            for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
+                let item = sitedata[itemnr]
                 if (item.liststatus !== 1)
                     restab.push(item)
             }
 
-            restab.sort((a, b) => { return a.roe - b.roe })    // asc
-
+            restab.sort((a, b) => { return a.roe - b.roe })    // asc TODO close this callback in separate func
         }
 
-        { // Filtering 2 (when we know real price of those items and roe)
+        { // Filter 2 (when we know real price of those items and roe)
 
             // sitesplace
-            for (let itemnr = 0; itemnr < sitedata[sitename].length; itemnr++) //data.rb_items.length; itemnr++)  TMP_ITEM_LIMIT
+            for (let itemnr = 0; itemnr < sitedata.length; itemnr++) 
             {
-                ;
+                let item = sitedata[itemnr]
 
             }
 
@@ -428,14 +432,15 @@ var TEST = false
         let sredni_kurs_count = 0
         for (let sitename in data.sites)  //TODO check if it is good
         {
-            console.log(`\n        ${sitename}:`)
+            console.log(`\n       ${sitename}:`)
+            console.log("\n       Rate of exchange: \n");
             for (item of results[sitename].roe) {
                 //if(item.roe<4.5)
                 //    break
                 if (item.liststatus === 2)
-                    console.log(`==wl==\n${item.name} :  ${item.roe}\n`);
+                    console.log(`==wl== ${item.name} :  ${item.roe}\n`);
                 else
-                    console.log(`${item.name} :  ${item.roe} \n`);
+                    console.log(`       ${item.name} :  ${item.roe} \n`);
 
                 sredni_kurs_suma += item.roe
                 sredni_kurs_count++
