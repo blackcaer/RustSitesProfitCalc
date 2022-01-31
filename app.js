@@ -73,7 +73,7 @@ const checkLists = function (name = "", whitelist = [], blacklist = []) {
 
 }
 
-const filter1part1 = function ({ item, Wfrom = 10, Bto = 0.3, } = {}) {
+const filter1 = function ({ item, Wfrom = 10, Bto = 0.3, } = {}) {
     // needs item.price
 
     let listAs = 0
@@ -178,7 +178,7 @@ var TEST = false
     var smreqdata
     var data = {}
     data.sites = {}
-    data.sites["rustbet"] = { info: { name: "rustbet", filter1: true }, data: [] }  // key schould === .name
+    data.sites["rustbet"] = { info: { name: "rustbet", filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true }, data: [] }  // key schould === .name
     data.sm_items = []
     /*if (TEST===true)
     {
@@ -259,14 +259,13 @@ var TEST = false
     var whitelist_smmarket = []
     var blacklist_smmarket = []
 
-    { // Popularity on steam market (filter 1.2 loading)
+    { // Popularity on steam market (data for filter 2)
         let wbresult = await getMarketWBlists({req_data:smreqdata, popularx100:3, unpopularx100:13 }) // await?
         if (wbresult.success == true) {
             whitelist_smmarket = wbresult.whitelist
             blacklist_smmarket = wbresult.blacklist
         } else {
             console.log(wbresult.err)
-            console.log("TENTEN");
             return false    //TODO obsluga bledu, np globalna lista bledow wyswietlana pod koniec
         }
     }
@@ -275,59 +274,57 @@ var TEST = false
 
     // MAIN SITES LOOP
     for (let sitename in data.sites) {// sites:
-        var sitedata = data.sites[sitename].data
+        let sitedata = data.sites[sitename].data
+        let siteinfo = data.sites[sitename].info
 
-        { // Filter 1
 
-            { // Site price
-                let b = 0, w = 0 // counters
-                for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
-                    let item = sitedata[itemnr]
-                    // Notify if negative price value:
-                    if(item.price <= 0)
-                        console.log(`======================= NEGATIVE PRICE VALUE IN ${item.name} =======================`)
-                    
-                    let result = filter1part1({ 'item': item })
-                    if (result.success)
-                    {
-                        if (result.list === 2)
-                            w++
-                        else if (result.list === 1)
-                            b++
-                        item.liststatus = result.list
-                    }else
-                    {
-                        console.log(`F1.1 Error in item ${item.name}:`);
-                        console.log(result.error);
-                    }
+        if(siteinfo.filter1){ // Filter 1 - Site price
+            let b = 0, w = 0 // counters
+            for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
+                let item = sitedata[itemnr]
+                // Notify if negative price value:
+                if(item.price <= 0)
+                    console.log(`======================= NEGATIVE PRICE VALUE IN ${item.name} =======================`)
+                
+                let result = filter1({ 'item': item })
+                if (result.success)
+                {
+                    if (result.list === 2)
+                        w++
+                    else if (result.list === 1)
+                        b++
+                    item.liststatus = result.list
+                }else
+                {
+                    console.log(`F1 Error in item ${item.name}:`);
+                    console.log(result.error);
                 }
-                console.log(`\n\n1.1: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
             }
-
-            { // Filter 1.2 with display
-                let w = 0, b = 0    // counters
-
-                // sitesplace
-                for (let i = 0; i < sitedata.length; i++) {
-                    let item = sitedata[i]
-                    if (item.liststatus === 1 || item.liststatus === 2) 
-                        continue
-
-                    // >here< only items with liststatus == 0 or undefined
-
-                    let itstat = checkLists(item.name, whitelist_smmarket, blacklist_smmarket)
-
-                    if (itstat === 2) { item.liststatus = itstat; w++ }         // Ifs for counting 
-                    else if (itstat === 1) { item.liststatus = itstat; b++ }
-                }
-
-
-                console.log(`\n\nF 1.2 ${sitename}: Whitelisted: ${w} \nBlacklisted: ${b}`)
-            }
-
+            console.log(`\n\nF1: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
         }
 
-        { // Fetching sm data for each item      
+        if(siteinfo.filter2){ // Filter 2 with display
+            let w = 0, b = 0    // counters
+
+            // sitesplace
+            for (let i = 0; i < sitedata.length; i++) {
+                let item = sitedata[i]
+                if (item.liststatus === 1 || item.liststatus === 2) 
+                    continue
+
+                // >here< only items with liststatus == 0 or undefined
+
+                let itstat = checkLists(item.name, whitelist_smmarket, blacklist_smmarket)
+
+                if (itstat === 2) { item.liststatus = itstat; w++ }         // Ifs for counting 
+                else if (itstat === 1) { item.liststatus = itstat; b++ }
+            }
+
+            console.log(`\n\nF2 ${sitename}: Whitelisted: ${w} \nBlacklisted: ${b}`)
+        }
+
+
+        if(siteinfo.fetchsmdata){ // Fetching sm data for each item      
             let tstart, tend // Measuring time
             // Rustbet: 
 
@@ -337,10 +334,10 @@ var TEST = false
             for (let itemtabnr = 0; itemtabnr < sitedata.length; itemtabnr++) 
             {
                 let item = sitedata[itemtabnr]
-                count++
                 if (item.liststatus === 1)  // If blacklisted
                     continue
 
+                count++
                 console.log(`Item nr ${count} : ${item.name}`);    // status
 
                 let options = { cd_tooManyRequest_error: 5000, maxTMRerrInRow: 1, appid: 252490, nameid: item.nameid, hash_name: item.name, req_data: smreqdata, logErr: true, logInfo: true }
@@ -372,7 +369,7 @@ var TEST = false
         //    {storeData(data,'./tmp/data.txt')}
         //}
 
-        { // Calculating .roe
+        if(siteinfo.calcroe){ // Calculating .roe
             // sitesplace
             for (let itemnr = 0; itemnr < sitedata.length; itemnr++)
             {
@@ -391,7 +388,7 @@ var TEST = false
         }
 
 
-        { // Sorting by roe
+        if(siteinfo.sortroe){ // Sorting by roe
             // sitesplace
             results[sitename] = { roe: [] }
             let restab = results[sitename].roe
@@ -405,7 +402,7 @@ var TEST = false
             restab.sort((a, b) => { return a.roe - b.roe })    // asc TODO close this callback in separate func
         }
 
-        { // Filter 2 (when we know real price of those items and roe)
+        if(siteinfo.filter3){ // Filter 3 (when we know real price of those items and roe)
 
             // sitesplace
             for (let itemnr = 0; itemnr < sitedata.length; itemnr++) 
@@ -417,13 +414,7 @@ var TEST = false
 
         }
 
-        { // Getting volume from priceoverview
-
-        }
-
-        { // Filtering 3 
-
-        }
+        // Getting volume from priceoverview
 
     }
 
