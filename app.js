@@ -5,11 +5,10 @@ const { isReadStream } = require('request/lib/helpers')
 const rb = require('./lib/sitereq_rb.js')   // Needs bypass of cloudflare 
 const sm = require('./lib/sitereq_sm')
 
-const NAME_RB_ITEMS = "rb_itemdb.txt"
-//const NAME_RB_ITEMSSHORT="testsrc_short.txt"
-
-const PATH_RB_ITEMS = "./src/" + NAME_RB_ITEMS //rb_itembd.txt
+const PATH_RB_ITEMS = "./src/rb_itemdb.txt"
+const PATH_RBEQ_ITEMS = "./src/rbeq_itemdb.txt"
 const PATH_SM_ITEMDB = "./src/itemdb.js"
+
 
 const PATH_COOKIES = "./src/cookies/steam_cookies_priceov.txt"
 const PATH_HEADER = "./src/cookies/steam_header.txt"
@@ -33,25 +32,34 @@ const readData = (path) => {
     return data
 }
 
-const prepareRbItems = async function (pathRbDb) {
+/**
+ * Reads JSON data from file, returns data as {success:boolean, items:Array} with no duplicates. Duplicate is whem item1.name === item2.name.
+ * Function adds .quantity property to the item, which is number of items with the same .name.
+ * @param {string} path - path to the database 
+ * @returns {{'success':true, 'items':Array} | {'success':false, 'error':Array} } 
+ */
+const prepareItemsFrom = function (path) {
     var items = []
-    if (fs.existsSync(pathRbDb)) {
-        let tmp = (JSON.parse(fs.readFileSync(pathRbDb, { encoding: 'utf8', flag: 'r' }))).items
+    if (fs.existsSync(path)) {
+        try{
+        let tmp = (JSON.parse(fs.readFileSync(path, { encoding: 'utf8', flag: 'r' }))).items
 
         for (const item of tmp) {
             let pos = items.findIndex((el) => { return el.name === item.name })
             if (pos === -1) {
                 items.push(item)
-                items[items.length - 1].quantity = 1
+                items[items.length - 1].quantity = 1    // when this item is added first time, it will always be set to 1
                 
                 continue
             }
             items[pos].quantity++
+        }}catch(err)
+        {   
+            return { "success": false, "error": err }
         }
-        //storeData(items,pathRbDb)
     }
     else {
-        return { "success": false, "error": [`Error: ${pathRbDb} not found`] }
+        return { "success": false, "error": `${path} not found` }    
     }
     return { "success": true, "items": items }
 }
@@ -73,7 +81,7 @@ const checkLists = function (name = "", whitelist = [], blacklist = []) {
 
 }
 
-const filter1 = function ({ item, Wfrom = 10, Bto = 0.3, } = {}) {
+const filter1 = function ({ item, Wfrom = 10, Bto = 0.3 } = {}) {
     // needs item.price
 
     let listAs = 0
@@ -90,6 +98,23 @@ const filter1 = function ({ item, Wfrom = 10, Bto = 0.3, } = {}) {
     }
     return { "success": true, "list": listAs, }
 
+}
+
+/**
+ * Returns true if item schouldn't be filtered out and true if it schould.
+ * If treshold === 0 filter always returns true
+ * 
+ * @param {*} treshold - if (roe < treshold) || (treshold < 0 && roe > |treshold|) it filters it out (returns false)
+ * @param {*} roe - item's roe
+ * 
+ */
+const filterroe = function(treshold,roe){
+    if(treshold === 0)
+        return true
+    else if(treshold > 0)
+        return roe > treshold
+    else // treshold < 0
+        return roe < -treshold 
 }
 
 const getMarketWBlists = async function ({ req_data={},count= 100, search_descriptions= false, sort_column= 'popular', sort_dir= 'desc', appid= 252490,popularx100 = 3, unpopularx100 = 13 } = {}) {      // TODO sprawdzic czy trzeba async dopisac
@@ -171,87 +196,110 @@ const getMarketWBlists = async function ({ req_data={},count= 100, search_descri
 // 2 - whitelist
 // 1 - blacklist
 // 0 - nothing
-var TEST = false
 
-    ;// Main:
+var C =         // testing config
+{ 
+    datarb: false,          // make data[rq]
+    datarbeq: true,        // make data[rbeq]
+    datarbeqAllTrue: false,  // make data[rbeq] but with all filters ON (like in normal rb)
+    getrb: false,           // get from file
+    getrbeq: true           // get from file
+}
+
+/*
+
+*/
+
+;// Main:
 (async () => {
     var smreqdata
     var data = {}
     data.sites = {}
-    data.sites["rustbet"] = { info: { name: "rustbet", filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true }, data: [] }  // key schould === .name
+    if(C.datarb) // for testing
+        data.sites["rb"] = { info: { name: "rb", filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe:true, filterroe: 3.9 }, data: [] }  // key schould === .name
+    if(C.datarbeq) // for testing
+        data.sites["rbeq"] = { info: { name: "rbeq", filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe:true, filterroe: 0 }, data: [] }
+    
+    if(C.datarbeqAllTrue) // for testing
+        data.sites["rbeq"] = { info: { name: "rb", filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe:true, filterroe: 0 }, data: [] }  // key schould === .name
+    
     data.sm_items = []
-    /*if (TEST===true)
-    {
-        let datatmp = readData('./tmp/data.txt')
-        if (!datatmp)
+
+    {   // Getting headers from file
+        try {
+            smreqdata = JSON.parse('{' + fs.readFileSync(PATH_HEADER, "utf8") + '}')
+        } catch (err) {
+            console.log('Headers file error:')
+            console.log(err);
             return false
-        data = datatmp 
-        console.log("LOADED PREV DATA");
-    }*/
-
-    try {    // Getting headers from file
-        smreqdata = JSON.parse('{' + fs.readFileSync(PATH_HEADER, "utf8") + '}')
-    } catch (err) {
-        console.log('Headers file error:')
-        console.log(err);
-        return false
+        }
     }
-
-    //if(TEST!==true) //for testing purposes only
-    //{
 
     { // Preparing all items:
 
-        // Preparing rb_iems
-        {
-            let rb_fetch_result = await prepareRbItems(PATH_RB_ITEMS)
+        // Preparing rustbet
+        if(C.getrb){    // for testing
+            let rb_fetch_result = prepareItemsFrom(PATH_RB_ITEMS)
 
             if (rb_fetch_result.success === false) {
                 console.log(rb_fetch_result.error)  // log err
                 return false
             }
             else    // if good
-                data.sites["rustbet"].data.push(...rb_fetch_result.items)
+                data.sites["rb"].data.push(...rb_fetch_result.items)
         }
 
-        // Preparing sm_market database:
+        // Preparing rustbet_eq
+        if(C.getrbeq){ // for testing
+            let rb_fetch_result = prepareItemsFrom(PATH_RBEQ_ITEMS)
+
+            if (rb_fetch_result.success === false) {
+                console.log(rb_fetch_result.error)  // log err
+                return false
+            }
+            else    // if good
+                data.sites["rbeq"].data.push(...rb_fetch_result.items)
+        }
+
+        // Preparing sm_market database
         {
             data.sm_items.push(...JSON.parse(fs.readFileSync(PATH_SM_ITEMDB, { encoding: 'utf8', flag: 'r' })))
         }
     }
-
+    
     { // Adding nameid to items
         let stats = {}  // statistics of found/not found items etc
 
-        { // "rustbet":
-            stats.rb = {}
-            stats.rb.found = 0
-            stats.rb.notfound = []
-            let rbdata = data.sites["rustbet"].data
-            // sitesplace
-            for (let i = 0; i < rbdata.length; i++) {
-                let currname = rbdata[i].name
+        for(let sitename in data.sites)
+        {    
+            stats[sitename] = {}
+            stats[sitename].found = 0
+            stats[sitename].notfound = []
+
+            let sitedata = data.sites[sitename].data
+            
+            for (let i = 0; i < sitedata.length; i++) {
+                let currname = sitedata[i].name     // item name
                 let found = data.sm_items.find(el => el.name === currname)
                 if (found === undefined) {
-                    stats.rb.notfound.push(currname)
-                    rbdata.splice(i,1)
+                    stats[sitename].notfound.push(currname)
+                    sitedata.splice(i,1)
                     i--
                     continue
                 }
-                stats.rb.found++
-                rbdata[i].nameid = found.nameid
-                //console.log(`Item found: ${found.name}`)
+                stats[sitename].found++
+                sitedata[i].nameid = found.nameid
             }
-        }
+        
+            { // Showing statistics, errors
 
-        { // Showing statistics, errors
-            const SPACE = "      "
-            console.log("Nameids added");
-            console.log("\nRustbet:")
-            console.log(SPACE + `${stats.rb.found}/${data.sites["rustbet"].data.length + stats.rb.notfound.length} items found in smdb\n`)
+                console.log("Nameids added");
+                console.log(`\n${sitename}:`)
+                console.log("      " + `${stats[sitename].found}/${data.sites[sitename].data.length + stats[sitename].notfound.length} items found in smdb\n`)
 
-            if (stats.rb.notfound != false)
-                console.log(SPACE + `Not found: \n${stats.rb.notfound}\n`)
+                if (stats[sitename].notfound != false)
+                    console.log("      " + `Not found: \n${stats[sitename].notfound}\n`)
+            }
         }
     }
 
@@ -272,16 +320,16 @@ var TEST = false
 
     var results = {}    // results.<sitename>.<resulttype>
 
-    // MAIN SITES LOOP
+    // Getting and analyzing data loop 
     for (let sitename in data.sites) {// sites:
         let sitedata = data.sites[sitename].data
         let siteinfo = data.sites[sitename].info
-
 
         if(siteinfo.filter1){ // Filter 1 - Site price
             let b = 0, w = 0 // counters
             for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
                 let item = sitedata[itemnr]
+
                 // Notify if negative price value:
                 if(item.price <= 0)
                     console.log(`======================= NEGATIVE PRICE VALUE IN ${item.name} =======================`)
@@ -296,11 +344,11 @@ var TEST = false
                     item.liststatus = result.list
                 }else
                 {
-                    console.log(`F1 Error in item ${item.name}:`);
+                    console.log(`F1 ${sitename}: Error in item ${item.name}:`);
                     console.log(result.error);
                 }
             }
-            console.log(`\n\nF1: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
+            console.log(`\n\nF1 ${sitename}: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
         }
 
         if(siteinfo.filter2){ // Filter 2 with display
@@ -322,7 +370,6 @@ var TEST = false
 
             console.log(`\n\nF2 ${sitename}: Whitelisted: ${w} \nBlacklisted: ${b}`)
         }
-
 
         if(siteinfo.fetchsmdata){ // Fetching sm data for each item      
             let tstart, tend // Measuring time
@@ -364,11 +411,6 @@ var TEST = false
             console.log(`\nFetching all ${count} items for ${sitename} took ${(tend - tstart) / 1000} seconds`);
         }
 
-        //{   // for testing purposes only
-        //    if (TEST!==true)
-        //    {storeData(data,'./tmp/data.txt')}
-        //}
-
         if(siteinfo.calcroe){ // Calculating .roe
             // sitesplace
             for (let itemnr = 0; itemnr < sitedata.length; itemnr++)
@@ -386,7 +428,6 @@ var TEST = false
                     console.log(`Error: Item status for ${item.name} histogram is false`);
             }
         }
-
 
         if(siteinfo.sortroe){ // Sorting by roe
             // sitesplace
@@ -418,27 +459,39 @@ var TEST = false
 
     }
 
-    { // Display
-        let sredni_kurs_suma = 0
-        let sredni_kurs_count = 0
-        for (let sitename in data.sites)  //TODO check if it is good
-        {
-            console.log(`\n       ${sitename}:`)
-            console.log("\n       Rate of exchange: \n");
-            for (item of results[sitename].roe) {
-                //if(item.roe<4.5)
-                //    break
-                if (item.liststatus === 2)
-                    console.log(`==wl== ${item.name} :  ${item.roe}\n`);
-                else
-                    console.log(`       ${item.name} :  ${item.roe} \n`);
 
-                sredni_kurs_suma += item.roe
-                sredni_kurs_count++
+    for (let sitename in data.sites)  // Display loop
+    {
+        let siteinfo = data.sites[sitename].info
+
+        
+        if(siteinfo.displayroe){ // Display roe
+            let sredni_kurs_suma = 0
+            let sredni_kurs_count = 0
+
+            try{
+                console.log(`\n       ====================== ${sitename} ======================`)
+                console.log("       Rate of exchange: \n");
+                for (item of results[sitename].roe) {
+                    
+                    if(!filterroe(siteinfo.filterroe, item.roe))
+                        continue
+
+                    if (item.liststatus === 2)
+                        console.log(`==wl== ${item.name} :  ${item.roe}\n`);
+                    else
+                        console.log(`       ${item.name} :  ${item.roe} \n`);
+
+                    sredni_kurs_suma += item.roe
+                    sredni_kurs_count++
+                }
+            }catch(err){
+                console.log(`Display roe error: ${err}`);
+                continue
             }
-
+            console.log(`\nŚredni kurs tych przedmiotów to ${sredni_kurs_suma / sredni_kurs_count}`);
         }
-        console.log(`\nŚredni kurs tych przedmiotów to ${sredni_kurs_suma / sredni_kurs_count}`);
+        
     }
 
     //  0,85 * kN/kS - 1 = suma gry
@@ -464,6 +517,7 @@ var TEST = false
     color: 'a7ec2e',
     locked: false,
     price: 7.2
+    quantity: 1
     liststatus : 2
   }
 */
