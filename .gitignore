@@ -1,9 +1,15 @@
 node_modules/
 tmp/
+src/
 npm-debug.log
 "src/old item db"
 lib/getnameid_dbs/
 src/cookies/
 TODO.txt
 test.js
-src/old item db/actual for 26.01.2022.js
+src/rb_itemdb.txt
+src/rbeq_itemdb.txt
+src/rch_itemdb.txt
+src/rcheq_itemdb.txt
+src/itemdb.js
+
