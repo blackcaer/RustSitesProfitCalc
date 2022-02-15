@@ -1,19 +1,54 @@
-//const { Console } = require('console')
 const fs = require('fs')    //file stream
-const { isReadStream } = require('request/lib/helpers')
-//const prompt = require('prompt')
-const rb = require('./lib/sitereq_rb.js')   // Needs bypass of cloudflare 
+
+const rb = require('./lib/sitereq_rb.js')   // Needs to bypass cloudflare 
 const sm = require('./lib/sitereq_sm')
+
+const NAME_LOG_DATA = 'datalog'
 
 const PATH_RB_ITEMS = "./src/rb_itemdb.txt"
 const PATH_RBEQ_ITEMS = "./src/rbeq_itemdb.txt"
 const PATH_RCH_ITEMDB = "./src/rch_itemdb.txt"
 const PATH_RCHEQ_ITEMS = "./src/rcheq_itemdb.txt"
+const PATH_RC_ITEMS = "./src/rc_itemdb.txt"
+
+const PATH_RB_TEST = "./src/rb_test.txt"
+const PATH_RBEQ_TEST = "./src/rbeq_test.txt"
 
 const PATH_SM_ITEMDB = "./src/itemdb.js"
 
 const PATH_COOKIES = "./src/cookies/steam_cookies_priceov.txt"
 const PATH_HEADER = "./src/cookies/steam_header.txt"
+
+const PATH_LOGS = "./logs/"
+
+/**
+ * 
+ * @param {string} spaceindate 
+ * @param {string} space 
+ * @param {string} spaceintime 
+ * @returns {string}
+ */
+Date.prototype.yyyymmddhhiiss = function(spaceindate='',space='',spaceintime='') {
+    let mm = this.getMonth() + 1; // getMonth() is zero-based
+    let dd = this.getDate();
+    let hh = this.getHours();
+    let ii = this.getMinutes();
+    let ss = this.getSeconds();
+
+    let date = 
+    [this.getFullYear(),
+    (mm>9 ? '' : '0') + mm,
+    (dd>9 ? '' : '0') + dd
+    ].join(spaceindate);
+
+    let time =
+    [(hh>9 ? '' : '0')+hh,
+    (ii>9 ? '' : '0')+ii,
+    (ss>9 ? '' : '0')+ss
+    ].join(spaceintime);
+
+    return date+space+time
+  }
 
 const storeData = (data, path) => {
     try {
@@ -34,37 +69,6 @@ const readData = (path) => {
     return data
 }
 
-/**
- * Reads JSON data from file, returns data as {success:boolean, items:Array} with no duplicates. Duplicate is whem item1.name === item2.name.
- * Function adds .quantity property to the item, which is number of items with the same .name.
- * @param {string} path - path to the database 
- * @returns {{'success':true, 'items':Array} | {'success':false, 'error':string} } 
- */
-const prepareItemsFrom = function (path) {
-    var rdyitems = []
-    if (fs.existsSync(path)) {
-        try{
-        let tmp = (JSON.parse(fs.readFileSync(path, { encoding: 'utf8', flag: 'r' }))).items
-
-        for (const item of tmp) {
-            let pos = rdyitems.findIndex((el) => { return el.name === item.name })
-            if (pos === -1) {
-                rdyitems.push(item)
-                rdyitems[rdyitems.length - 1].quantity = 1    // when this item is added first time, it will always be set to 1
-                
-                continue
-            }
-            rdyitems[pos].quantity++
-        }}catch(err)
-        {   
-            return { "success": false, "error": err }
-        }
-    }
-    else {
-        return { "success": false, "error": `${path} not found` }    
-    }
-    return { "success": true, "items": rdyitems }
-}
 
 /**
  * Function is checking whether name is on the white or black list. If on none of them, returns 0.
@@ -193,6 +197,58 @@ const getMarketWBlists = async function ({ req_data={},count= 100, search_descri
 
 }
 
+/**
+ * Reads JSON data from file, returns data as {success:boolean, items:Array} with no duplicates. Duplicate is whem item1.name === item2.name.
+ * Function adds .quantity property to the item, which is number of items with the same .name.
+ * @param {string} path - path to the database 
+ * @returns {{'success':true, 'items':Array} | {'success':false, 'error':string} } 
+ */
+ const prepareSite_default = function (path,items="items",name="name",price="price") {
+    
+    var rdyitems = []
+
+    if (fs.existsSync(path)) {
+        try{
+        let tmp = (JSON.parse(fs.readFileSync(path, { encoding: 'utf8', flag: 'r' })))[items]
+
+        if(name!=="name")       // if name isn't unified
+            for(const item of tmp)
+            {
+                let curr_name = item[name]
+                delete item[name]
+                item.name = curr_name
+            }
+        if(price!=="price")       // if price isn't unified
+            for(const item of tmp)
+            {
+                let curr_price = item[price]
+                delete item[price]
+                item.price = curr_price
+            }
+
+        for (const item of tmp) {
+
+            let pos = rdyitems.findIndex((el) => { return el.name === item.name })
+            if (pos === -1) {
+                rdyitems.push(item)
+                rdyitems[rdyitems.length - 1].quantity = 1    // when this item is added first time, it will always be set to 1
+                
+                continue
+            }
+            rdyitems[pos].quantity++
+        }}catch(err)
+        {   
+            return { "success": false, "error": err }
+        }
+    }
+    else {
+        return { "success": false, "error": `${path} not found` }    
+    }
+    return { "success": true, "items": rdyitems }
+}
+
+// TODO zunifikowac te obiekty bo np rc ma ItemPhoto z domeną a inne maja image bez domeny etc
+
 const prepareSite = function(path,sitename){
     let rb_fetch_result
     try{
@@ -205,9 +261,15 @@ const prepareSite = function(path,sitename){
             tmp.push({ name: item.market_hash_name, price: item.price/100, quantity: item.amount })
         rb_fetch_result = { success: true, items: tmp }
     }
+    else if(sitename==="rc")
+    {
+        rb_fetch_result = prepareSite_default(path,"inventory","itemName","itemPrice")
+    }
     else
-        rb_fetch_result = prepareItemsFrom(path)
+        rb_fetch_result = prepareSite_default(path)
     }catch(error)
+
+
     {return {success:false, error:error}}
 
     if (rb_fetch_result.success === false) {
@@ -218,6 +280,7 @@ const prepareSite = function(path,sitename){
     return {success:true, items: rb_fetch_result.items}
 
 }
+
 // glowny plik do zbierania danych z wielu stron, wszak analiza wszędzie jest taka sama, od razu dane wszystkich stron mialbym posegregowane w jednym miejscu
 
 // .liststatus
@@ -225,41 +288,53 @@ const prepareSite = function(path,sitename){
 // 1 - blacklist
 // 0 - nothing
 
-var C =         // testing config
-{ 
-    datarb: 1,          //t create data.sites[rq]
-    datarch: 1,         //t create data.sites[rch]
-    datarbeq: 1,        //t create data.sites[rbeq]
-    datarbeqAllTrue: false,  //f make data[rbeq] but with all filters ON (like in normal rb)
-    datarcheq: 1,
-}
+var C = {}
+
+C.test = 1
+C.logData = 0
 
 ;// Main:
 (async () => {
+    var results = {}    // results.<sitename>.<resulttype>, results of sorting by resulttype ie by .roe
+    // Lists fetched from steam market search in filter 1.2 (by getMarketWBlists), needed to avoid repeating the same market fetches for all sites:
+    var whitelist_smmarket = []
+    var blacklist_smmarket = []
+    
     var smreqdata
     var data = {}
     data.sites = {}
+
     {   // Settings for every site
-    if (C.datarb) 
-        data.sites["rb"] = { info: { name: "rb", path: PATH_RB_ITEMS, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }  // key schould === .name
-    if (C.datarbeq) 
-        data.sites["rbeq"] = { info: { name: "rbeq", path: PATH_RBEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
-
-    if (C.datarbeqAllTrue) // for testing
-        data.sites["rbeq"] = { info: { name: "rb", path: PATH_RBEQ_ITEMS, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }  // key schould === .name
-
-    if (C.datarch)
-        data.sites["rch"] = { info: { name: "rch", path: PATH_RCH_ITEMDB, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
-
-    if (C.datarcheq) 
-        data.sites["rcheq"] = { info: { name: "rcheq", path: PATH_RCHEQ_ITEMS, prepare: 0, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
         
+    data.sites["rb"] = { info: { name: "rb", path: PATH_RB_ITEMS, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4 }, data: [] }  // key schould === .name
+    
+    data.sites["rbeq"] = { info: { name: "rbeq", path: PATH_RBEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
+
+    data.sites["rch"] = { info: { name: "rch", path: PATH_RCH_ITEMDB, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 3.4 }, data: [] }
+
+    data.sites["rcheq"] = { info: { name: "rcheq", path: PATH_RCHEQ_ITEMS, prepare: 0, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
+        
+    data.sites["rc"] = { info: { name: "rc", path: PATH_RC_ITEMS, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4 }, data: [] }  // key schould === .name
 
     data.sm_items = []
-
     }
 
-    {   // Getting headers from file
+    // For testing:
+    if(C.test)
+    {
+        C.logData = 1
+        data.sites["rb"].info.path = PATH_RB_TEST
+        data.sites["rbeq"].info.path = PATH_RBEQ_TEST
+        data.sites["rb"].info.prepare = 1
+        data.sites["rbeq"].info.prepare = 1
+
+        // Turning off the rest
+        data.sites["rch"].info.prepare = 0
+        data.sites["rcheq"].info.prepare = 0
+        data.sites["rc"].info.prepare = 0
+    }
+
+    { // Getting headers from file
         try {
             smreqdata = JSON.parse('{' + fs.readFileSync(PATH_HEADER, "utf8") + '}')
         } catch (err) {
@@ -300,6 +375,9 @@ var C =         // testing config
 
         for(let sitename in data.sites)
         {    
+            if(!data.sites[sitename].info.prepare)
+                continue
+
             stats[sitename] = {}
             stats[sitename].found = 0
             stats[sitename].notfound = []
@@ -308,7 +386,7 @@ var C =         // testing config
             for (let i = 0; i < sitedata.length; i++) {
                 let currname = sitedata[i].name     // item name
                 let found = data.sm_items.find(el => el.name === currname)
-                if (found === undefined) {
+                if (found === undefined) {      // if is in db
                     stats[sitename].notfound.push(currname)
                     sitedata.splice(i,1)
                     i--
@@ -329,9 +407,6 @@ var C =         // testing config
             }
         }
     }
-    // Lists fetched from steam market search in filter 1.2 (by getMarketWBlists), needed to avoid repeating the same market fetches for all sites:
-    var whitelist_smmarket = []
-    var blacklist_smmarket = []
 
     { // Popularity on steam market (data for filter 2)
         let wbresult = await getMarketWBlists({req_data:smreqdata, popularx100:3, unpopularx100:13 }) // await?
@@ -344,12 +419,14 @@ var C =         // testing config
         }
     }
 
-    var results = {}    // results.<sitename>.<resulttype>
-
-    // Getting and analyzing data loop 
+    {// Getting and analyzing data
+    var fetched_smdata = {}
     for (let sitename in data.sites) {// sites:
         let sitedata = data.sites[sitename].data
         let siteinfo = data.sites[sitename].info
+
+        if(!data.sites[sitename].info.prepare)
+            continue
 
         if(siteinfo.filter1){ // Filter 1 - Site price
             let b = 0, w = 0 // counters
@@ -409,10 +486,18 @@ var C =         // testing config
                     continue
 
                 count++
-                console.log(`Item nr ${count} : ${item.name}`);    // status
+                
+                if(item.nameid in fetched_smdata)
+                {
+                    item.sm_data = fetched_smdata[item.nameid]
+                    console.log(`Item nr ${count} : [DB]    ${item.name}`);    // status
+                    continue
+                }
+
+                console.log(`Item nr ${count} : [FETCH] ${item.name}`);    // status
 
                 let options = { cd_tooManyRequest_error: 5000, maxTMRerrInRow: 1, appid: 252490, nameid: item.nameid, hash_name: item.name, req_data: smreqdata, logErr: true, logInfo: true }
-                let GDresp     // Variable holding actual response from getData (with histogram/priceoverview etc./)
+                let GDresp     // Variable holding actual response from getData (with histogram/priceoverview etc./), shortcut for getData response
                 item.sm_data = { "status": { "allgood": true, "histogram": true } }     // if error, overwrite bad one to false and .allgood to false, TODO check if it is needed
 
                 options.type = "histogram"
@@ -427,14 +512,14 @@ var C =         // testing config
                     item.sm_data.status.allgood = false
                     item.sm_data.status.histogram = false
                 }
-                
+                fetched_smdata[item.nameid] = item.sm_data
             }
 
             tend = Date.now()
 
             console.log(`\nFetching all ${count} items for ${sitename} took ${(tend - tstart) / 1000} seconds`);
         }
-
+    }
         if(siteinfo.calcroe){ // Calculating .roe
             for (let itemnr = 0; itemnr < sitedata.length; itemnr++)
             {
@@ -479,9 +564,25 @@ var C =         // testing config
         // Getting volume from priceoverview
     }
 
+    // Logging data
+    if(C.logData)
+    {
+        try{
+        let date = new Date()
+        let fullpath = PATH_LOGS + NAME_LOG_DATA + date.yyyymmddhhiiss('-', '-', '-')+'.txt'
+        storeData(data, fullpath)
+        }catch(err)
+        {
+            console.log(`ERROR while trying to logData to "${fullpath}":\n ${err}`);
+        }
+    }
+
     // Display loop
     for (let sitename in data.sites)  
     {
+        if(!data.sites[sitename].info.prepare)
+            continue
+
         let siteinfo = data.sites[sitename].info
         
         if(siteinfo.displayroe){ // Display roe
@@ -492,7 +593,9 @@ var C =         // testing config
                 console.log(`\n\n\n       ====================== ${sitename} ======================`)
                 console.log("       Rate of exchange: \n");
                 for (item of results[sitename].roe) {
-                    
+                    sredni_kurs_suma += item.roe
+                    sredni_kurs_count++
+
                     if(!filterroe(siteinfo.filterroe, item.roe))
                         continue
 
@@ -500,16 +603,13 @@ var C =         // testing config
                         console.log(`==wl== ${item.name} :  ${item.roe}\n`);
                     else
                         console.log(`       ${item.name} :  ${item.roe} \n`);
-
-                    sredni_kurs_suma += item.roe
-                    sredni_kurs_count++
                 }
             }catch(err){
                 console.log(`Display roe error: ${err}`);
                 continue
             }
             if(results[sitename].roe.length != 0)
-                console.log(`\nŚredni kurs tych przedmiotów to ${sredni_kurs_suma / sredni_kurs_count}`);
+                console.log(`\nŚredni kurs wszystkich sprawdzanych przedmiotów to ${sredni_kurs_suma / sredni_kurs_count}`);
             else
                 console.log("       == No items ==");
         }

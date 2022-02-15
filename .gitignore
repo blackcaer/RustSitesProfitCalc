@@ -1,5 +1,6 @@
 node_modules/
 tmp/
+logs/
 src/
 npm-debug.log
 "src/old item db"
