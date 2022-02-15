@@ -1,7 +1,7 @@
 node_modules/
 tmp/
 logs/
-src/
+src/*
 npm-debug.log
 "src/old item db"
 lib/getnameid_dbs/
