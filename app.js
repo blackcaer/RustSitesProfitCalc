@@ -284,15 +284,12 @@ const prepareSite = function (path, sitename) {
 
 }
 
-// glowny plik do zbierania danych z wielu stron, wszak analiza wszędzie jest taka sama, od razu dane wszystkich stron mialbym posegregowane w jednym miejscu
-
 // .liststatus
 // 2 - whitelist
 // 1 - blacklist
 // 0 - nothing
 
 var C = {}
-
 C.test = 1
 C.testtype = 1  // 1,2
 C.logData = 0
@@ -491,7 +488,7 @@ C.showItemNr = false
                     else if (itstat === 1) { item.liststatus = itstat; b++ }
                 }
 
-                console.log(`\nF2 ${sitename}: Whitelisted: ${w} \nBlacklisted: ${b}\n`)
+                console.log(`\nF2 ${sitename}:\n Whitelisted: ${w} \nBlacklisted: ${b}\n`)
             }
 
             if (siteinfo.fetchsmdata) { // Fetching sm data for each item      
@@ -562,7 +559,7 @@ C.showItemNr = false
 
                 tend = Date.now()
 
-                console.log(`\nFetching all ${count} items for ${sitename} took ${(tend - tstart) / 1000} seconds\n`);
+                console.log(`\n     Fetching ${count} items for ${sitename} took ${(tend - tstart) / 1000} seconds\n`);
             }
 
             if (siteinfo.calcroe) { // Calculating .roe
