@@ -11,8 +11,11 @@ const PATH_RCH_ITEMDB = "./src/rch_itemdb.txt"
 const PATH_RCHEQ_ITEMS = "./src/rcheq_itemdb.txt"
 const PATH_RC_ITEMS = "./src/rc_itemdb.txt"
 
-const PATH_RB_TEST = "./src/rb_test.txt"
-const PATH_RBEQ_TEST = "./src/rbeq_test.txt"
+const PATH_RB_TEST = "./src/test/rb_test.txt"
+const PATH_RBEQ_TEST = "./src/test/rbeq_test.txt"
+const PATH_RCH_TEST = "./src/test/rch_test.txt"
+const PATH_RCHEQ_TEST = "./src/test/rcheq_test.txt"
+const PATH_RC_TEST = "./src/test/rc_test.txt"
 
 const PATH_SM_ITEMDB = "./src/itemdb.js"
 
@@ -68,7 +71,6 @@ const readData = (path) => {
     }
     return data
 }
-
 
 /**
  * Function is checking whether name is on the white or black list. If on none of them, returns 0.
@@ -143,7 +145,6 @@ const getMarketWBlists = async function ({ req_data={},count= 100, search_descri
     for (let i = 0; i < popularx100; i++) {
         let start = i * 100
         promisetab.push(sm.getChunkOfSteamMarket({ ...options, start: start }).then((resp, err) => {
-            //console.log(`Promise tab 1 nr: ${i}`);
             if (err) {
                 console.log(`(getMarketSearch start: ${start})`);       // TODO delete logging inside a func
                 console.log(`Error while getting data to filter1: ${err}`)
@@ -166,7 +167,7 @@ const getMarketWBlists = async function ({ req_data={},count= 100, search_descri
     for (let i = 0; i < unpopularx100; i++) {
         let start = totalitems - 100 * (unpopularx100 - i)
         promisetab.push(sm.getChunkOfSteamMarket({ ...options, start: start }).then((resp, err) => {
-            //console.log(`Promise tab 2 nr: ${i}`);
+
             if (err) {
                 console.log(`(getMarketSearch start: ${start})`);
                 console.log(`Error while getting data to filter1: ${err}`)
@@ -189,7 +190,7 @@ const getMarketWBlists = async function ({ req_data={},count= 100, search_descri
 
     console.log("Downloading market data...");
     let t1 = Date.now()
-    await Promise.all(promisetab)
+    await Promise.allSettled(promisetab)
     let t2 = Date.now()
 
     console.log(`Market search data fetched in ${(t2 - t1) / 1000} s`)
@@ -201,14 +202,14 @@ const getMarketWBlists = async function ({ req_data={},count= 100, search_descri
  * Reads JSON data from file, returns data as {success:boolean, items:Array} with no duplicates. Duplicate is whem item1.name === item2.name.
  * Function adds .quantity property to the item, which is number of items with the same .name.
  * @param {string} path - path to the database 
+ * @param {string} name - name for attrib 'name' in the source data. Will be changed to 'name' in every item
+ * @param {string} price - name for attrib 'price' in the source data. Will be changed to 'price' in every item
  * @returns {{'success':true, 'items':Array} | {'success':false, 'error':string} } 
  */
- const prepareSite_default = function (path,items="items",name="name",price="price") {
-    
+const prepareSite_default = function (path, items = "items", name = "name", price = "price") {
     var rdyitems = []
-
     if (fs.existsSync(path)) {
-        try{
+        try {
         let tmp = (JSON.parse(fs.readFileSync(path, { encoding: 'utf8', flag: 'r' })))[items]
 
         if(name!=="name")       // if name isn't unified
@@ -227,7 +228,6 @@ const getMarketWBlists = async function ({ req_data={},count= 100, search_descri
             }
 
         for (const item of tmp) {
-
             let pos = rdyitems.findIndex((el) => { return el.name === item.name })
             if (pos === -1) {
                 rdyitems.push(item)
@@ -247,37 +247,47 @@ const getMarketWBlists = async function ({ req_data={},count= 100, search_descri
     return { "success": true, "items": rdyitems }
 }
 
-// TODO zunifikowac te obiekty bo np rc ma ItemPhoto z domeną a inne maja image bez domeny etc
-
 const prepareSite = function(path,sitename){
-    let rb_fetch_result
+    let result
     try{
     if(sitename==="rch")
-        rb_fetch_result = {success: true, items: JSON.parse(fs.readFileSync(path,{encoding:"utf8"}))}
+        result = {success: true, items: JSON.parse(fs.readFileSync(path,{encoding:"utf8"}))}
     else if(sitename==="rcheq")
     {
-        let tmp = []
-        for(let item of JSON.parse(fs.readFileSync(path,{encoding:"utf8"})).items)
-            tmp.push({ name: item.market_hash_name, price: item.price/100, quantity: item.amount })
-        rb_fetch_result = { success: true, items: tmp }
+        let rdyitems = []
+        //for(let item of JSON.parse(fs.readFileSync(path,{encoding:"utf8"})).items)
+        //    if(item.market_hash_name )
+        //        tmp.push({ name: item.market_hash_name, price: item.price/100, quantity: item.amount })
+        for (let item of JSON.parse(fs.readFileSync(path,{encoding:"utf8"})).items) {
+            
+            let pos = rdyitems.findIndex((el) => { return el.name === item.market_hash_name})
+            if (pos === -1) {
+                rdyitems.push({name: item.market_hash_name, price: item.price/100, quantity: item.amount})
+                rdyitems[rdyitems.length - 1].quantity = 1    // when this item is added first time, it will always be set to 1
+                continue
+            }
+            rdyitems[pos].quantity++
+        }
+
+        result = { success: true, items: rdyitems }
     }
     else if(sitename==="rc")
     {
-        rb_fetch_result = prepareSite_default(path,"inventory","itemName","itemPrice")
+        result = prepareSite_default(path,"inventory","itemName","itemPrice")
     }
     else
-        rb_fetch_result = prepareSite_default(path)
+        result = prepareSite_default(path)
     }catch(error)
 
 
     {return {success:false, error:error}}
 
-    if (rb_fetch_result.success === false) {
+    if (result.success === false) {
         
-        return {success:false, error:rb_fetch_result.error}
+        return {success:false, error:result.error}
     }
     
-    return {success:true, items: rb_fetch_result.items}
+    return {success:true, items: result.items}
 
 }
 
@@ -291,7 +301,9 @@ const prepareSite = function(path,sitename){
 var C = {}
 
 C.test = 1
+C.testtype = 1  // 1,2
 C.logData = 0
+C.showItemNr=false
 
 ;// Main:
 (async () => {
@@ -310,28 +322,47 @@ C.logData = 0
     
     data.sites["rbeq"] = { info: { name: "rbeq", path: PATH_RBEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
 
-    data.sites["rch"] = { info: { name: "rch", path: PATH_RCH_ITEMDB, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 3.4 }, data: [] }
+    data.sites["rch"] = { info: { name: "rch", path: PATH_RCH_ITEMDB, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 3.4 }, data: [] }
 
-    data.sites["rcheq"] = { info: { name: "rcheq", path: PATH_RCHEQ_ITEMS, prepare: 0, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
+    data.sites["rcheq"] = { info: { name: "rcheq", path: PATH_RCHEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
         
-    data.sites["rc"] = { info: { name: "rc", path: PATH_RC_ITEMS, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4 }, data: [] }  // key schould === .name
+    data.sites["rc"] = { info: { name: "rc", path: PATH_RC_ITEMS, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4 }, data: [] }  // key schould === .name
 
     data.sm_items = []
     }
 
     // For testing:
-    if(C.test)
-    {
-        C.logData = 1
-        data.sites["rb"].info.path = PATH_RB_TEST
-        data.sites["rbeq"].info.path = PATH_RBEQ_TEST
-        data.sites["rb"].info.prepare = 1
-        data.sites["rbeq"].info.prepare = 1
+    if (C.test) {
+        if (C.testtype === 1) {
+            C.logData = 1
+            data.sites["rb"].info.path = PATH_RB_TEST
+            data.sites["rbeq"].info.path = PATH_RBEQ_TEST
+            data.sites["rb"].info.prepare = 1
+            data.sites["rbeq"].info.prepare = 1
 
-        // Turning off the rest
-        data.sites["rch"].info.prepare = 0
-        data.sites["rcheq"].info.prepare = 0
-        data.sites["rc"].info.prepare = 0
+            // Turning off the rest
+            data.sites["rch"].info.prepare = 0
+            data.sites["rcheq"].info.prepare = 0
+            data.sites["rc"].info.prepare = 0
+        }
+        else if (C.testtype === 2) {
+            C.logData = 1
+            data.sites["rb"].info.path = PATH_RB_TEST
+            data.sites["rbeq"].info.path = PATH_RBEQ_TEST
+            data.sites["rch"].info.path = PATH_RCH_TEST
+            data.sites["rcheq"].info.path = PATH_RCHEQ_TEST
+            data.sites["rc"].info.path = PATH_RC_TEST
+
+            data.sites["rb"].info.prepare = 1
+            data.sites["rbeq"].info.prepare = 1
+            data.sites["rch"].info.prepare = 1
+            data.sites["rcheq"].info.prepare = 1
+            data.sites["rc"].info.prepare = 1
+
+        } else {
+            console.log("Wrong testtype");
+            return false
+        }
     }
 
     { // Getting headers from file
@@ -420,151 +451,167 @@ C.logData = 0
     }
 
     {// Getting and analyzing data
-    var fetched_smdata = {}
-    for (let sitename in data.sites) {// sites:
-        let sitedata = data.sites[sitename].data
-        let siteinfo = data.sites[sitename].info
+        var fetched_smdata = []
 
-        if(!data.sites[sitename].info.prepare)
-            continue
+        for (let sitename in data.sites) {// sites:
+            let sitedata = data.sites[sitename].data
+            let siteinfo = data.sites[sitename].info
 
-        if(siteinfo.filter1){ // Filter 1 - Site price
-            let b = 0, w = 0 // counters
-            for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
-                let item = sitedata[itemnr]
+            if(!data.sites[sitename].info.prepare)
+                continue
 
-                // Notify if negative price value:
-                if(item.price <= 0)
-                    console.log(`======================= NEGATIVE PRICE VALUE IN ${item.name} =======================`)
-                
-                let result = filter1({ 'item': item })
-                if (result.success)
-                {
-                    if (result.list === 2)
-                        w++
-                    else if (result.list === 1)
-                        b++
-                    item.liststatus = result.list
-                }else
-                {
-                    console.log(`F1 ${sitename}: Error in item ${item.name}:`);
-                    console.log(result.error);
+            if(siteinfo.filter1){ // Filter 1 - Site price
+                let b = 0, w = 0 // counters
+                for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
+                    let item = sitedata[itemnr]
+
+                    // Notify if negative price value:
+                    if(item.price <= 0)
+                        console.log(`======================= NEGATIVE PRICE VALUE IN ${item.name} =======================`)
+                    
+                    let result = filter1({ 'item': item })
+                    if (result.success)
+                    {
+                        if (result.list === 2)
+                            w++
+                        else if (result.list === 1)
+                            b++
+                        item.liststatus = result.list
+                    }else
+                    {
+                        console.log(`F1 ${sitename}: Error in item ${item.name}:`);
+                        console.log(result.error);
+                    }
                 }
-            }
-            console.log(`\n\nF1 ${sitename}: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
-        }
-
-        if(siteinfo.filter2){ // Filter 2 with display
-            let w = 0, b = 0    // counters
-
-            for (let i = 0; i < sitedata.length; i++) {
-                let item = sitedata[i]
-                if (item.liststatus === 1 || item.liststatus === 2) 
-                    continue
-
-                // >here< only items with liststatus == 0 or undefined
-
-                let itstat = checkLists(item.name, whitelist_smmarket, blacklist_smmarket)
-
-                if (itstat === 2) { item.liststatus = itstat; w++ }         // Ifs for counting 
-                else if (itstat === 1) { item.liststatus = itstat; b++ }
+                console.log(`\nF1 ${sitename}: \nWhitelisted: ${w} \nBlacklisted: ${b}`)
             }
 
-            console.log(`\n\nF2\n ${sitename}: Whitelisted: ${w} \nBlacklisted: ${b}\n`)
-        }
+            if(siteinfo.filter2){ // Filter 2 with display
+                let w = 0, b = 0    // counters
 
-        if(siteinfo.fetchsmdata){ // Fetching sm data for each item      
-            let tstart, tend // Measuring time
-            // Rustbet: 
+                for (let i = 0; i < sitedata.length; i++) {
+                    let item = sitedata[i]
+                    if (item.liststatus === 1 || item.liststatus === 2) 
+                        continue
 
-            tstart = Date.now()
-            let count = 0
-            for (let itemtabnr = 0; itemtabnr < sitedata.length; itemtabnr++) 
-            {
-                let item = sitedata[itemtabnr]
-                if (item.liststatus === 1)  // If blacklisted
-                    continue
+                    // >here< only items with liststatus == 0 or undefined
 
-                count++
-                
-                if(item.nameid in fetched_smdata)
-                {
-                    item.sm_data = fetched_smdata[item.nameid]
-                    console.log(`Item nr ${count} : [DB]    ${item.name}`);    // status
-                    continue
+                    let itstat = checkLists(item.name, whitelist_smmarket, blacklist_smmarket)
+
+                    if (itstat === 2) { item.liststatus = itstat; w++ }         // Ifs for counting 
+                    else if (itstat === 1) { item.liststatus = itstat; b++ }
                 }
 
-                console.log(`Item nr ${count} : [FETCH] ${item.name}`);    // status
+                console.log(`\n\nF2\n ${sitename}: Whitelisted: ${w} \nBlacklisted: ${b}\n`)
+            }
 
-                let options = { cd_tooManyRequest_error: 5000, maxTMRerrInRow: 1, appid: 252490, nameid: item.nameid, hash_name: item.name, req_data: smreqdata, logErr: true, logInfo: true }
+            if(siteinfo.fetchsmdata){ // Fetching sm data for each item      
+                let tstart, tend // Measuring time
+                // Rustbet: 
+
+                tstart = Date.now()
+                let count = 0
+                let options = { cd_tooManyRequest_error: 5000, maxTMRerrInRow: 1, appid: 252490, nameid: null, hash_name: null, req_data: smreqdata, logErr: true, logInfo: true }
                 let GDresp     // Variable holding actual response from getData (with histogram/priceoverview etc./), shortcut for getData response
-                item.sm_data = { "status": { "allgood": true, "histogram": true } }     // if error, overwrite bad one to false and .allgood to false, TODO check if it is needed
+                let promisetabs = {}
+                promisetabs.histogram = []
 
-                options.type = "histogram"
-                GDresp = await sm.getData(options)      // TODO try to make it async if possible
-                if (GDresp.success == true && GDresp.response.success === 1)
-                    item.sm_data.histogram = GDresp.response
-                else {
-                    console.log(`Error while getting histogram: "${GDresp.error}"`)
-                    console.log(`GetData success: ${GDresp.success}`)
-                    if (GDresp.response != undefined)
-                        console.log(`Histogram success: ${GDresp.response.success}`)
-                    item.sm_data.status.allgood = false
-                    item.sm_data.status.histogram = false
+                for (let itemtabnr = 0; itemtabnr < sitedata.length; itemtabnr++) 
+                {
+                    let item = sitedata[itemtabnr]
+                    if (item.liststatus === 1)  // If blacklisted
+                        continue  
+                    count++
+                    
+                    if(item.nameid in fetched_smdata)   // Read from cached data
+                    {
+                        if(C.showItemNr)
+                            console.log(`Item nr ${count} : [DB]    ${item.name}`);    // status
+                        item.sm_data = fetched_smdata[item.nameid]
+                        continue
+                    }
+                    if(C.showItemNr)
+                        console.log(`Item nr ${count} : [FETCH] ${item.name}`);    // status
+                    
+                    options.nameid = item.nameid
+                    options.hash_name = item.name
+                    item.sm_data = { "status": { "allgood": true, "histogram": true } }     // if error, overwrite bad one to false and .allgood to false, TODO check if it is needed
+
+                    options.type = "histogram"
+                    promisetabs.histogram.push(sm.getData(options).then(
+                        (resp)=>{
+                            if (resp.success == true && resp.response.success == true)
+                            {
+                                item.sm_data.histogram = resp.response
+                                if(fetched_smdata[item.nameid]===undefined)
+                                    fetched_smdata[item.nameid]={}
+                                fetched_smdata[item.nameid].histogram = item.sm_data.histogram
+                                fetched_smdata[item.nameid].status = item.sm_data.status
+                                
+                            }else{
+                                item.sm_data.status.allgood = false
+                                item.sm_data.status.histogram = false
+
+                                console.log(`Unknown error while getting histogram: `)
+                                console.log(`GetData success: ${resp.success}`)
+                                if (erresp.response != undefined)
+                                    console.log(`Histogram success: ${resp.response.success}`)
+                            }
+                        },
+                        (erresp)=>{
+                            item.sm_data.status.allgood = false
+                            item.sm_data.status.histogram = false
+
+                            console.log(`Error while getting histogram: "${erresp.error}"`)
+                            console.log(`GetData success: ${erresp.success}`)
+                            if (erresp.response != undefined)
+                                console.log(`Histogram success: ${erresp.response.success}`)
+                        }
+                    ))
                 }
-                fetched_smdata[item.nameid] = item.sm_data
+
+                for(type in promisetabs)
+                    await Promise.allSettled(promisetabs[type])
+
+                tend = Date.now()
+
+                console.log(`\nFetching all ${count} items for ${sitename} took ${(tend - tstart) / 1000} seconds\n`);
+            } 
+        
+            if(siteinfo.calcroe){ // Calculating .roe
+                for (let itemnr = 0; itemnr < sitedata.length; itemnr++)
+                {
+                    let item = sitedata[itemnr]
+                    if (item.liststatus === 1)  // if Blisted
+                        continue
+
+                    if (item.sm_data.status.histogram == true)
+                        try{
+                        item.roe = (item.sm_data.histogram.lowest_sell_order / 100) / item.price // steam price / site price
+                        }catch(err)
+                        {console.log(`ERROR while trying to set roe for item ${item.name}: ${err}`)}
+                    else
+                        console.log(`Error: Item status for ${item.name} histogram is false`);
+                }
             }
 
-            tend = Date.now()
+            if(siteinfo.sortroe){ // Sorting by roe
+                results[sitename] = { roe: [] }
+                let restab = results[sitename].roe
 
-            console.log(`\nFetching all ${count} items for ${sitename} took ${(tend - tstart) / 1000} seconds`);
+                for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
+                    let item = sitedata[itemnr]
+                    if (item.liststatus !== 1)
+                        restab.push(item)
+                }
+
+                restab.sort((a, b) => { return a.roe - b.roe })    // asc TODO close this callback in separate func
+            }
+
         }
     }
-        if(siteinfo.calcroe){ // Calculating .roe
-            for (let itemnr = 0; itemnr < sitedata.length; itemnr++)
-            {
-                let item = sitedata[itemnr]
-                if (item.liststatus === 1)  // if Blisted
-                    continue
 
-                if (item.sm_data.status.histogram == true)
-                    try{
-                    item.roe = (item.sm_data.histogram.lowest_sell_order / 100) / item.price // steam price / site price
-                    }catch(err)
-                    {console.log(`ERROR while trying to set roe for item ${item.name}: ${err}`)}
-                else
-                    console.log(`Error: Item status for ${item.name} histogram is false`);
-            }
-        }
-
-        if(siteinfo.sortroe){ // Sorting by roe
-            results[sitename] = { roe: [] }
-            let restab = results[sitename].roe
-
-            for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
-                let item = sitedata[itemnr]
-                if (item.liststatus !== 1)
-                    restab.push(item)
-            }
-
-            restab.sort((a, b) => { return a.roe - b.roe })    // asc TODO close this callback in separate func
-        }
-
-        if(siteinfo.filter3){ // Filter 3 (when we know real price of those items and roe)
-
-            for (let itemnr = 0; itemnr < sitedata.length; itemnr++) 
-            {
-                let item = sitedata[itemnr]
-
-            }
-
-
-        }
-
-        // Getting volume from priceoverview
-    }
-
-    // Logging data
+    // Saving logs of data
     if(C.logData)
     {
         try{
