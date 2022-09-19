@@ -280,6 +280,10 @@ const prepareSite = function (path, sitename) {
         return { success: false, error: result.error }
     }
 
+    for (let item of result.items) {
+        item.liststatus = 0 // init val
+    }
+
     return { success: true, items: result.items }
 
 }
@@ -293,7 +297,8 @@ var C = {}
 C.test = 1
 C.testtype = 1  // 1,2
 C.logData = 0
-C.showItemNr = false
+C.showItemNr = 0
+C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on every site in ie .roe list
 
     ;// Main:
 (async () => {
@@ -329,6 +334,9 @@ C.showItemNr = false
             data.sites["rbeq"].info.path = PATH_RBEQ_TEST
             data.sites["rb"].info.prepare = 1
             data.sites["rbeq"].info.prepare = 1
+
+            data.sites["rb"].info.filterroe = 0
+            data.sites["rbeq"].info.filterroe = 0
 
             // Turning off the rest
             data.sites["rch"].info.prepare = 0
@@ -475,8 +483,7 @@ C.showItemNr = false
             if (siteinfo.filter2) { // Filter 2 with display
                 let w = 0, b = 0    // counters
 
-                for (let i = 0; i < sitedata.length; i++) {
-                    let item = sitedata[i]
+                for (let item of sitedata) {
                     if (item.liststatus === 1 || item.liststatus === 2)
                         continue
 
@@ -484,11 +491,14 @@ C.showItemNr = false
 
                     let itstat = checkLists(item.name, whitelist_smmarket, blacklist_smmarket)
 
-                    if (itstat === 2) { item.liststatus = itstat; w++ }         // Ifs for counting 
-                    else if (itstat === 1) { item.liststatus = itstat; b++ }
+                    if (itstat === 2)   // Ifs for counting 
+                        w++
+                    else if (itstat === 1)
+                        b++
+                    item.liststatus = itstat
                 }
 
-                console.log(`\nF2 ${sitename}:\n Whitelisted: ${w} \nBlacklisted: ${b}\n`)
+                console.log(`\nF2 ${sitename}:\nWhitelisted: ${w} \nBlacklisted: ${b}\n`)
             }
 
             if (siteinfo.fetchsmdata) { // Fetching sm data for each item      
@@ -498,7 +508,7 @@ C.showItemNr = false
                 tstart = Date.now()
                 let count = 0
                 let options = { cd_tooManyRequest_error: 5000, maxTMRerrInRow: 1, appid: 252490, nameid: null, hash_name: null, req_data: smreqdata, logErr: true, logInfo: true }
-                let GDresp     // Variable holding actual response from getData (with histogram/priceoverview etc./), shortcut for getData response
+                //let GDresp     // Variable holding actual response from getData (with histogram/priceoverview etc./), shortcut for getData response
                 let promisetabs = {}
                 promisetabs.histogram = []
 
@@ -506,25 +516,28 @@ C.showItemNr = false
                     let item = sitedata[itemtabnr]
                     if (item.liststatus === 1)  // If blacklisted
                         continue
-                    count++
 
                     if (item.nameid in fetched_smdata)   // Read from cached data
                     {
+                        count++
                         if (C.showItemNr)
                             console.log(`Item nr ${count} : [DB]    ${item.name}`);    // status
                         item.sm_data = fetched_smdata[item.nameid]
                         continue
                     }
-                    if (C.showItemNr)
-                        console.log(`Item nr ${count} : [FETCH] ${item.name}`);    // status
 
                     options.nameid = item.nameid
                     options.hash_name = item.name
                     item.sm_data = { "status": { "allgood": true, "histogram": true } }     // if error, overwrite bad one to false and .allgood to false, TODO check if it is needed
 
                     options.type = "histogram"
+
                     promisetabs.histogram.push(sm.getData(options).then(
                         (resp) => {
+                            count++
+                            if (C.showItemNr)
+                                console.log(`Item nr ${count} : [FETCH] ${item.name}`);    // status
+
                             if (resp.success == true && resp.response.success == true) {
                                 item.sm_data.histogram = resp.response
                                 if (fetched_smdata[item.nameid] === undefined)
@@ -536,13 +549,17 @@ C.showItemNr = false
                                 item.sm_data.status.allgood = false
                                 item.sm_data.status.histogram = false
 
-                                console.log(`Unknown error while getting histogram: `)
+                                console.log(`Unknown error while getting histogram `)
                                 console.log(`GetData success: ${resp.success}`)
-                                if (erresp.response != undefined)
+
+                                if (resp.response != undefined)
                                     console.log(`Histogram success: ${resp.response.success}`)
                             }
                         },
                         (erresp) => {
+                            count++
+                            if (C.showItemNr)
+                                console.log(`Item nr ${count} : [FETCH] ${item.name}`);    // status
                             item.sm_data.status.allgood = false
                             item.sm_data.status.histogram = false
 
@@ -550,6 +567,7 @@ C.showItemNr = false
                             console.log(`GetData success: ${erresp.success}`)
                             if (erresp.response != undefined)
                                 console.log(`Histogram success: ${erresp.response.success}`)
+
                         }
                     ))
                 }
@@ -557,23 +575,20 @@ C.showItemNr = false
                 for (type in promisetabs)
                     await Promise.allSettled(promisetabs[type])
 
-                tend = Date.now()
 
+                tend = Date.now()
                 console.log(`\n     Fetching ${count} items for ${sitename} took ${(tend - tstart) / 1000} seconds\n`);
             }
 
             if (siteinfo.calcroe) { // Calculating .roe
                 for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
                     let item = sitedata[itemnr]
-                    if (item.liststatus === 1)  // if Blisted
+                    if (item.liststatus === 1 || item.sm_data.status.histogram != true)  // if Blacklisted or histogram is unavalibe
                         continue
 
-                    if (item.sm_data.status.histogram == true)
-                        try {
-                            item.roe = (item.sm_data.histogram.lowest_sell_order / 100) / item.price // steam price / site price
-                        } catch (err) { console.log(`ERROR while trying to set roe for item ${item.name}: ${err}`) }
-                    else
-                        console.log(`Error: Item status for ${item.name} histogram is false`);
+                    try {
+                        item.roe = (item.sm_data.histogram.lowest_sell_order / 100) / item.price // steam price / site price
+                    } catch (err) { console.log(`ERROR while trying to set roe for item ${item.name}: ${err}`) }
                 }
             }
 
@@ -618,28 +633,79 @@ C.showItemNr = false
             try {
                 console.log(`\n\n\n       ====================== ${sitename} ======================`)
                 console.log("       Rate of exchange: \n");
+
+                let displayed_nonwl_count = 0
+
                 for (item of results[sitename].roe) {
                     sredni_kurs_suma += item.roe
                     sredni_kurs_count++
 
+
                     if (!filterroe(siteinfo.filterroe, item.roe))
                         continue
 
-                    if (item.liststatus === 2)
-                        console.log(`==wl== ${item.name} :  ${item.roe}\n`);
-                    else
-                        console.log(`       ${item.name} :  ${item.roe} \n`);
+
+                    if (item.liststatus === 2) { console.log(`==wl== ${item.name} :  ${Math.round(item.roe * 100) / 100}\n`); }
+                    else if (displayed_nonwl_count < C.max_nonwlitems_todisplay) { console.log(`       ${item.name} :  ${Math.round(item.roe * 100) / 100} \n`); displayed_nonwl_count++ }
                 }
+
+
             } catch (err) {
                 console.log(`Display roe error: ${err}`);
                 continue
             }
             if (results[sitename].roe.length != 0)
-                console.log(`\nŚredni kurs wszystkich sprawdzanych przedmiotów to ${sredni_kurs_suma / sredni_kurs_count}`);
+                console.log(`\nŚredni kurs wszystkich sprawdzanych przedmiotów to ${Math.round(sredni_kurs_suma / sredni_kurs_count * 100) / 100}`);
             else
                 console.log("       == No items ==");
         }
 
+    }
+
+
+    { // Displaying end item status & errors & warnings & strange things
+        console.log(`\n     === End status: ===`);
+        try {
+            for (const sitename in data.sites) {
+                let siteinfo = data.sites[sitename].info
+                if (!siteinfo.prepare)
+                    continue
+
+                console.log(`\n${sitename}:`);
+
+                let s = {}
+                s.zero = 0
+                s.one = 0
+                s.two = 0
+
+                for (const item of data.sites[sitename].data) {
+                    if (item.liststatus === 0)
+                        s.zero++
+                    else if (item.liststatus === 1) {
+                        s.one++
+                        continue    // futher tests require fetched sm_data which required liststatus!=1
+                    }
+                    else if (item.liststatus === 2)
+                        s.two++
+                    else
+                        console.log(`Unknows liststatus (${item.liststatus}) for item: ${item.name}`);
+
+                    if (item.sm_data.status.allgood != true) {
+                        // show warning when some items' status is not good
+                        console.log(`Warning: allgood for ${item.name} is false`);
+                        console.log(item.sm_data.status);
+                    }
+                }
+
+                //console.log(`Filter 1: ${siteinfo.filter1}, Filter 2: ${siteinfo.filter2}, Filter 3: ${siteinfo.filter3}`);
+                console.log(`Filters: ${(siteinfo.filter1 ? "filter1" : "")} ${(siteinfo.filter2 ? "filter2" : "")} ${(siteinfo.filter3 ? "filter3" : "")} `);
+                console.log(`Blacklisted: ${s.one}`);
+                console.log(`Whitelisted: ${s.two}`);
+                console.log(`Nonelisted: ${s.zero}`);
+            }
+        } catch (err) {
+            console.log(`Error while trying to display end status: ${err}`);
+        }
     }
 })();//end main IFEE func
 
