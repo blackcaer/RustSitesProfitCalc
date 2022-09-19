@@ -20,7 +20,7 @@ const PATH_RC_TEST = "./src/test/rc_test.txt"
 const PATH_SM_ITEMDB = "./src/itemdb.js"
 
 const PATH_COOKIES = "./src/cookies/steam_cookies_priceov.txt"
-const PATH_HEADER = "./src/cookies/steam_header.txt"
+const PATH_HEADER = "./src/cookies/steam_header.txt"            // Probably header for https://steamcommunity.com/market/listings/252490/Whiteout%20Hoodie requests
 
 const PATH_LOGS = "./logs/"
 
@@ -294,15 +294,15 @@ const prepareSite = function (path, sitename) {
 // 0 - nothing
 
 var C = {}
-C.test = 1
+C.test = 0
 C.testtype = 1  // 1,2
-C.logData = 0
-C.showItemNr = 0
+C.logData = 1
+C.showItemNr = 1
 C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on every site in ie .roe list
 
     ;// Main:
 (async () => {
-    var results = {}    // results.<sitename>.<resulttype>, results of sorting by resulttype ie by .roe
+    var sortedData = {}    // sortedData.<sitename>.<resulttype>, results of sorting by resulttype ie by .roe
     // Lists fetched from steam market search in filter 1.2 (by getMarketWBlists), needed to avoid repeating the same market fetches for all sites:
     var whitelist_smmarket = []
     var blacklist_smmarket = []
@@ -313,15 +313,15 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
 
     {   // Settings for every site
 
-        data.sites["rb"] = { info: { name: "rb", path: PATH_RB_ITEMS, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4 }, data: [] }  // key schould === .name
+        data.sites["rb"] = { info: { name: "rb", path: PATH_RB_ITEMS, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4, hidenonwl: true }, data: [] }  // key schould === .name
 
-        data.sites["rbeq"] = { info: { name: "rbeq", path: PATH_RBEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
+        data.sites["rbeq"] = { info: { name: "rbeq", path: PATH_RBEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0, hidenonwl: false }, data: [] }
 
-        data.sites["rch"] = { info: { name: "rch", path: PATH_RCH_ITEMDB, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 3.4 }, data: [] }
+        data.sites["rch"] = { info: { name: "rch", path: PATH_RCH_ITEMDB, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 3.4, hidenonwl: true }, data: [] }
 
-        data.sites["rcheq"] = { info: { name: "rcheq", path: PATH_RCHEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0 }, data: [] }
+        data.sites["rcheq"] = { info: { name: "rcheq", path: PATH_RCHEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0, hidenonwl: false }, data: [] }
 
-        data.sites["rc"] = { info: { name: "rc", path: PATH_RC_ITEMS, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4 }, data: [] }  // key schould === .name
+        data.sites["rc"] = { info: { name: "rc", path: PATH_RC_ITEMS, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4, hidenonwl: true }, data: [] }  // key schould === .name
 
         data.sm_items = []
     }
@@ -363,7 +363,7 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
         }
     }
 
-    { // Getting headers from file
+    { // Getting request headers from file
         try {
             smreqdata = JSON.parse('{' + fs.readFileSync(PATH_HEADER, "utf8") + '}')
         } catch (err) {
@@ -373,7 +373,7 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
         }
     }
 
-    { // Preparing all items:
+    { // Reading from files, (preparing all items):
 
         // Preparing sites
         for (let sitename in data.sites) {// sites:
@@ -412,7 +412,7 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
             let sitedata = data.sites[sitename].data
             for (let i = 0; i < sitedata.length; i++) {
                 let currname = sitedata[i].name     // item name
-                let found = data.sm_items.find(el => el.name === currname)
+                let found = data.sm_items.find(el => el.hash_name === currname)
                 if (found === undefined) {      // if is in db
                     stats[sitename].notfound.push(currname)
                     sitedata.splice(i, 1)
@@ -435,7 +435,7 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
         }
     }
 
-    { // Popularity on steam market (data for filter 2)
+    { // Getting popularity on steam market (data for filter 2)
         let wbresult = await getMarketWBlists({ req_data: smreqdata, popularx100: 3, unpopularx100: 13 }) // await?
         if (wbresult.success == true) {
             whitelist_smmarket = wbresult.whitelist
@@ -593,8 +593,8 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
             }
 
             if (siteinfo.sortroe) { // Sorting by roe
-                results[sitename] = { roe: [] }
-                let restab = results[sitename].roe
+                sortedData[sitename] = { roe: [] }
+                let restab = sortedData[sitename].roe
 
                 for (let itemnr = 0; itemnr < sitedata.length; itemnr++) {
                     let item = sitedata[itemnr]
@@ -608,7 +608,7 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
         }
     }
 
-    // Saving logs of data
+    // Saving data logs in on
     if (C.logData) {
         try {
             let date = new Date()
@@ -634,19 +634,37 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
                 console.log(`\n\n\n       ====================== ${sitename} ======================`)
                 console.log("       Rate of exchange: \n");
 
-                let displayed_nonwl_count = 0
+                let start_showing_nonwl_from = 0
+                if(siteinfo.hidenonwl)
+                {   // Counting from which index script can display nonwl items (limited by C.max_nonwlitems_todisplay)
+                    let nonwl_count = 0
+                    let items_count = 0
+                    for (let i = sortedData[sitename].roe.length - 1; i >= 0; i--) {
+                        let item = sortedData[sitename].roe[i]
 
-                for (item of results[sitename].roe) {
+                        if (nonwl_count < C.max_nonwlitems_todisplay) {
+                            items_count++
+                            if (item.liststatus === 0) {
+                                nonwl_count++
+                                continue
+                            }
+                        } else {
+                            start_showing_nonwl_from = sortedData[sitename].roe.length - items_count
+                            break
+                        }
+                    }
+                }
+
+                for (let i = 0; i < sortedData[sitename].roe.length; i++) {
+                    let item = sortedData[sitename].roe[i]
                     sredni_kurs_suma += item.roe
                     sredni_kurs_count++
-
 
                     if (!filterroe(siteinfo.filterroe, item.roe))
                         continue
 
-
-                    if (item.liststatus === 2) { console.log(`==wl== ${item.name} :  ${Math.round(item.roe * 100) / 100}\n`); }
-                    else if (displayed_nonwl_count < C.max_nonwlitems_todisplay) { console.log(`       ${item.name} :  ${Math.round(item.roe * 100) / 100} \n`); displayed_nonwl_count++ }
+                    if (item.liststatus === 2) { console.log(`==wl== ${item.name} :  ${Math.round(item.roe * 100) / 100}\n`); } // show that its whitelisted
+                    else if (i >= start_showing_nonwl_from) { console.log(`       ${item.name} :  ${Math.round(item.roe * 100) / 100} \n`); }
                 }
 
 
@@ -654,14 +672,13 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
                 console.log(`Display roe error: ${err}`);
                 continue
             }
-            if (results[sitename].roe.length != 0)
+            if (sortedData[sitename].roe.length != 0)
                 console.log(`\nŚredni kurs wszystkich sprawdzanych przedmiotów to ${Math.round(sredni_kurs_suma / sredni_kurs_count * 100) / 100}`);
             else
                 console.log("       == No items ==");
         }
 
     }
-
 
     { // Displaying end item status & errors & warnings & strange things
         console.log(`\n     === End status: ===`);
