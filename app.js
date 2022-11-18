@@ -109,7 +109,7 @@ const filter1 = function ({ item, Wfrom = 10, Bto = 0.3 } = {}) {
 }
 
 /**
- * Returns true if item schouldn't be filtered out and true if it schould.
+ * Returns true if item shouldn't be filtered out and true if it should.
  * If treshold === 0 filter always returns true
  * 
  * @param {*} treshold - if (roe < treshold) || (treshold < 0 && roe > |treshold|) it filters it out (returns false)
@@ -313,15 +313,15 @@ C.max_nonwlitems_todisplay = 40 // max items with liststatus=0 to display on eve
 
     {   // Settings for every site
 
-        data.sites["rb"] = { info: { name: "rb", path: PATH_RB_ITEMS, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4, hidenonwl: true }, data: [] }  // key schould === .name
+        data.sites["rb"] = { info: { name: "rb", path: PATH_RB_ITEMS, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4, hidenonwl: true }, data: [] }  // key should === .name
 
-        data.sites["rbeq"] = { info: { name: "rbeq", path: PATH_RBEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0, hidenonwl: false }, data: [] }
+        data.sites["rbeq"] = { info: { name: "rbeq", path: PATH_RBEQ_ITEMS, prepare: 0, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0, hidenonwl: false }, data: [] }
 
         data.sites["rch"] = { info: { name: "rch", path: PATH_RCH_ITEMDB, prepare: 1, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 3.4, hidenonwl: true }, data: [] }
 
-        data.sites["rcheq"] = { info: { name: "rcheq", path: PATH_RCHEQ_ITEMS, prepare: 1, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0, hidenonwl: false }, data: [] }
+        data.sites["rcheq"] = { info: { name: "rcheq", path: PATH_RCHEQ_ITEMS, prepare: 0, filter1: false, filter2: false, filter3: false, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 0, hidenonwl: false }, data: [] }
 
-        data.sites["rc"] = { info: { name: "rc", path: PATH_RC_ITEMS, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4, hidenonwl: true }, data: [] }  // key schould === .name
+        data.sites["rc"] = { info: { name: "rc", path: PATH_RC_ITEMS, prepare: 0, filter1: true, filter2: true, filter3: true, fetchsmdata: true, calcroe: true, sortroe: true, displayroe: true, filterroe: 4, hidenonwl: true }, data: [] }  // key should === .name
 
         data.sm_items = []
     }
